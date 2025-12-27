@@ -258,7 +258,7 @@ def _titulo_plotly(fig, titulo: str, uf: str):
     uf_txt = uf if uf != "TOTAL" else "TODOS"
     fig.update_layout(
         title=f"{titulo} • {uf_txt}",
-        title_x=0.3,
+        title_x=0.5,
         title_font=dict(size=14, color="#FFFFFF", family="Arial Black")
     )
     return fig
@@ -308,8 +308,10 @@ def barh_contagem(df_base, col_dim, titulo, uf):
         height=300,
         margin=dict(l=10, r=10, t=70, b=10),
         showlegend=False,
-        xaxis=dict(visible=False)
+        
     )
+    # 🔥 Oculta eixo X (escala) — mantém apenas os valores nas barras
+    fig.update_xaxes(visible=False, showticklabels=False, ticks="", showgrid=False, zeroline=False)
 
     fig.update_traces(
         textposition="outside",
@@ -318,6 +320,7 @@ def barh_contagem(df_base, col_dim, titulo, uf):
 
     fig.update_yaxes(title_text="")
 
+    # ✅ TOTAL DO GRÁFICO (único)
     fig.add_annotation(
         xref="paper",
         yref="paper",
@@ -325,15 +328,16 @@ def barh_contagem(df_base, col_dim, titulo, uf):
         y=1.12,
         text=f"TOTAL: {total_fmt}",
         showarrow=False,
-        font=dict(size=13, color="#fcba03", family="Arial Black"),
+        font=dict(
+            size=13,
+            color="#fcba03",
+            family="Arial Black"
+        ),
         align="right"
     )
 
     return _titulo_plotly(fig, titulo, uf)
 
-# ======================================================
-# ACUMULADO MENSAL (CORRIGIDO)
-# ======================================================
 def acumulado_mensal_fig_e_tabela(df_base, col_data):
     base = df_base.dropna(subset=[col_data]).copy()
     if base.empty:
@@ -353,15 +357,18 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
         .sort_values("MES_NUM")
     )
 
+    # % por mês (para manter percentuais no stack)
     total_mes = dados.groupby("MES_NUM")["QTD"].transform("sum")
     dados["PCT"] = (dados["QTD"] / total_mes * 100).round(0)
 
+    # Labels de % somente em PROCEDENTE e IMPROCEDENTE
     dados["LABEL"] = ""
     mask_proc = dados["_CLASSE_"] == "PROCEDENTE"
     mask_imp  = dados["_CLASSE_"] == "IMPROCEDENTE"
     dados.loc[mask_proc, "LABEL"] = dados.loc[mask_proc, "PCT"].astype(int).astype(str) + "%"
     dados.loc[mask_imp,  "LABEL"] = dados.loc[mask_imp,  "PCT"].astype(int).astype(str) + "%"
 
+    # ===== pivot para contagens por mês =====
     tab_pivot = (
         dados.pivot_table(index=["MES_NUM", "MÊS"], columns="_CLASSE_", values="QTD", fill_value=0)
         .reset_index()
@@ -373,12 +380,14 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     tab_pivot["TOTAL"] = tab_pivot["IMPROCEDENTE"] + tab_pivot["PROCEDENTE"] + tab_pivot["OUTROS"]
     tab_pivot = tab_pivot.sort_values("MES_NUM")
 
+    # tabela final (para o dataframe no final)
     tabela = tab_pivot.drop(columns=["MES_NUM"]).copy()
     tabela = tabela[["MÊS", "IMPROCEDENTE", "PROCEDENTE", "TOTAL"]]
 
     total_geral = int(tab_pivot["TOTAL"].sum())
     total_geral_fmt = f"{total_geral:,}".replace(",", ".")
 
+    # ===== GRÁFICO =====
     fig = px.bar(
         dados,
         x="MÊS",
@@ -391,6 +400,7 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
         color_discrete_map={"PROCEDENTE": COR_PROC, "IMPROCEDENTE": COR_IMP, "OUTROS": COR_OUT},
     )
 
+    # Margens: espaço à direita para o TOTAL e embaixo para a mini-tabela (fora do Plotly)
     fig.update_layout(
         height=380,
         margin=dict(l=10, r=220, t=70, b=90),
@@ -403,7 +413,7 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
 
     fig.update_traces(textposition="outside", cliponaxis=False)
 
-    # TOTAL mais à direita e abaixo das legendas
+    # ✅ TOTAL (mais à direita, abaixo das legendas)
     fig.add_annotation(
         xref="paper",
         yref="paper",
@@ -419,7 +429,7 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
         borderpad=10,
     )
 
-    # Mini-tabela HTML por mês (centralizada)
+    # ===== Mini-tabela HTML (alinhada e centralizada por mês) =====
     def _fmt(n):
         return f"{int(n):,}".replace(",", ".")
 
@@ -531,7 +541,6 @@ def resumo_por_localidade_html(df_base, col_local, selecionado, top_n=12):
         qtd_fmt = f"{qtd:,}".replace(",", ".")
         linhas.append(f'<div class="{cls}"><span>{loc}</span><span>{qtd_fmt}</span></div>')
     return "\n".join(linhas)
-
 # ======================================================
 # BOTÃO ATUALIZAR BASE
 # ======================================================
