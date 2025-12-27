@@ -343,6 +343,9 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     if base.empty:
         return None, None
 
+    # =========================
+    # Preparação dos dados
+    # =========================
     base["MES_NUM"] = base[col_data].dt.month
     base["MÊS"] = base["MES_NUM"].map(MESES_PT)
 
@@ -357,37 +360,41 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
         .sort_values("MES_NUM")
     )
 
-    # % por mês (para manter percentuais no stack)
+    # =========================
+    # Percentuais (para labels nas barras)
+    # =========================
     total_mes = dados.groupby("MES_NUM")["QTD"].transform("sum")
     dados["PCT"] = (dados["QTD"] / total_mes * 100).round(0)
 
-    # Labels de % somente em PROCEDENTE e IMPROCEDENTE
     dados["LABEL"] = ""
-    mask_proc = dados["_CLASSE_"] == "PROCEDENTE"
-    mask_imp  = dados["_CLASSE_"] == "IMPROCEDENTE"
-    dados.loc[mask_proc, "LABEL"] = dados.loc[mask_proc, "PCT"].astype(int).astype(str) + "%"
-    dados.loc[mask_imp,  "LABEL"] = dados.loc[mask_imp,  "PCT"].astype(int).astype(str) + "%"
+    dados.loc[dados["_CLASSE_"] == "PROCEDENTE", "LABEL"] = dados["PCT"].astype(int).astype(str) + "%"
+    dados.loc[dados["_CLASSE_"] == "IMPROCEDENTE", "LABEL"] = dados["PCT"].astype(int).astype(str) + "%"
 
-    # ===== pivot para contagens por mês =====
-    tab_pivot = (
-        dados.pivot_table(index=["MES_NUM", "MÊS"], columns="_CLASSE_", values="QTD", fill_value=0)
+    # =========================
+    # Tabela base (usada para totais)
+    # =========================
+    tab = (
+        dados.pivot_table(
+            index=["MES_NUM", "MÊS"],
+            columns="_CLASSE_",
+            values="QTD",
+            fill_value=0
+        )
         .reset_index()
+        .sort_values("MES_NUM")
     )
-    for c in ["IMPROCEDENTE", "PROCEDENTE", "OUTROS"]:
-        if c not in tab_pivot.columns:
-            tab_pivot[c] = 0
 
-    tab_pivot["TOTAL"] = tab_pivot["IMPROCEDENTE"] + tab_pivot["PROCEDENTE"] + tab_pivot["OUTROS"]
-    tab_pivot = tab_pivot.sort_values("MES_NUM")
+    for c in ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]:
+        if c not in tab.columns:
+            tab[c] = 0
 
-    # tabela final (para o dataframe no final)
-    tabela = tab_pivot.drop(columns=["MES_NUM"]).copy()
-    tabela = tabela[["MÊS", "IMPROCEDENTE", "PROCEDENTE", "TOTAL"]]
+    tab["TOTAL"] = tab["PROCEDENTE"] + tab["IMPROCEDENTE"] + tab["OUTROS"]
 
-    total_geral = int(tab_pivot["TOTAL"].sum())
-    total_geral_fmt = f"{total_geral:,}".replace(",", ".")
+    tabela_final = tab[["MÊS", "IMPROCEDENTE", "PROCEDENTE", "TOTAL"]].copy()
 
-    # ===== GRÁFICO =====
+    # =========================
+    # Gráfico principal
+    # =========================
     fig = px.bar(
         dados,
         x="MÊS",
@@ -395,131 +402,66 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
         color="_CLASSE_",
         barmode="stack",
         text="LABEL",
-        category_orders={"MÊS": MESES_ORDEM, "_CLASSE_": ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]},
-        template="plotly_white",
-        color_discrete_map={"PROCEDENTE": COR_PROC, "IMPROCEDENTE": COR_IMP, "OUTROS": COR_OUT},
+        category_orders={
+            "MÊS": MESES_ORDEM,
+            "_CLASSE_": ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
+        },
+        color_discrete_map={
+            "PROCEDENTE": COR_PROC,
+            "IMPROCEDENTE": COR_IMP,
+            "OUTROS": COR_OUT
+        },
+        template="plotly_dark"
     )
-
-    # Margens: espaço à direita para o TOTAL e embaixo para a mini-tabela (fora do Plotly)
-    fig.update_layout(
-        height=380,
-        margin=dict(l=10, r=220, t=70, b=90),
-        legend_title_text="",
-    )
-
-    # Remove eixo Y (lado esquerdo)
-    fig.update_yaxes(visible=False, showticklabels=False, showgrid=False, zeroline=False, title_text="")
-    fig.update_xaxes(title_text="", tickfont=dict(size=11))
 
     fig.update_traces(textposition="outside", cliponaxis=False)
 
-    # ✅ TOTAL (mais à direita, abaixo das legendas)
-    fig.add_annotation(
-        xref="paper",
-        yref="paper",
-        x=1.2,
-        y=0.09,
-        text=f"<b>TOTAL</b><br>{total_geral_fmt}",
-        showarrow=False,
-        align="center",
-        font=dict(size=16, color="#fcba03", family="Arial Black"),
-        bgcolor="rgba(0,0,0,0.35)",
-        bordercolor="rgba(252,186,3,0.65)",
-        borderwidth=1,
-        borderpad=10,
+    fig.update_layout(
+        height=420,
+        showlegend=False,                 # ❌ remove legenda inferior
+        margin=dict(
+            l=140,                        # ⬅️ espaço para o bloco à esquerda
+            r=40,
+            t=50,
+            b=80
+        ),
+        xaxis_title="",
+        yaxis_title=""
     )
 
-    # ===== Mini-tabela HTML (alinhada e centralizada por mês) =====
-    def _fmt(n):
-        return f"{int(n):,}".replace(",", ".")
+    # =====================================================
+    # 🔢 BLOCO RESUMO (tipo tabela) À ESQUERDA DO GRÁFICO
+    # =====================================================
 
-    cells = []
-    for _, r in tab_pivot.iterrows():
-        mes = r["MÊS"]
-        proc = _fmt(r["PROCEDENTE"])
-        imp = _fmt(r["IMPROCEDENTE"])
-        tot = _fmt(r["TOTAL"])
-        cells.append(
-            f"""
-            <div class="mini-cell">
-              <div class="mini-mes">{mes}</div>
-              <div class="mini-row"><span class="mini-dot mini-proc"></span><span class="mini-num">{proc}</span></div>
-              <div class="mini-row"><span class="mini-dot mini-imp"></span><span class="mini-num">{imp}</span></div>
-              <div class="mini-row"><span class="mini-dot mini-tot"></span><span class="mini-num"><b>{tot}</b></span></div>
-            </div>
-            """
+    # 🔧 CONTROLES DE POSIÇÃO (AJUSTE AQUI 👇)
+    x_pos = -0.20        # ➡️ (-) mais esquerda | (+) mais direita
+    y_inicio = 0.50      # ⬆️ aumenta sobe | ⬇️ diminui desce
+    espacamento = 0.08   # distância entre linhas
+
+    resumo = [
+        ("#2e7d32", int(tab["PROCEDENTE"].sum())),    # Procedente (verde)
+        ("#c62828", int(tab["IMPROCEDENTE"].sum())),  # Improcedente (vermelho)
+        ("#fcba03", int(tab["TOTAL"].sum())),         # Total (amarelo)
+    ]
+
+    for i, (cor, valor) in enumerate(resumo):
+        y = y_inicio - (i * espacamento)
+        valor_fmt = f"{valor:,}".replace(",", ".")
+
+        fig.add_annotation(
+            xref="paper",
+            yref="paper",
+            x=x_pos,
+            y=y,
+            text=(
+                f"<span style='color:{cor};font-size:20px'>■</span> "
+                f"<span style='color:white;font-size:15px'><b>{valor_fmt}</b></span>"
+            ),
+            showarrow=False,
+            align="left"
         )
 
-    mini_table_html = f"""
-    <style>
-      .mini-wrap {{
-        width: 100%;
-        display: flex;
-        justify-content: center;
-        margin-top: 8px;
-      }}
-      .mini-grid {{
-        display: grid;
-        grid-template-columns: repeat(12, minmax(70px, 1fr));
-        gap: 10px;
-        max-width: 1200px;
-        width: 100%;
-      }}
-      .mini-cell {{
-        background: rgba(255,255,255,0.30);
-        border: 1px solid rgba(10,40,70,0.18);
-        border-radius: 12px;
-        padding: 10px 8px;
-        text-align: center;
-      }}
-      .mini-mes {{
-        font-weight: 950;
-        color: #0b2b45;
-        font-size: 10px;
-        margin-bottom: 8px;
-        text-transform: uppercase;
-      }}
-      .mini-row {{
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        gap: 8px;
-        line-height: 1.15;
-        margin: 4px 0;
-      }}
-      .mini-dot {{
-        width: 10px;
-        height: 10px;
-        border-radius: 3px;
-        display: inline-block;
-      }}
-      .mini-proc {{ background: {COR_PROC}; }}
-      .mini-imp  {{ background: {COR_IMP}; }}
-      .mini-tot  {{ background: #fcba03; }}
-      .mini-num {{
-        font-weight: 950;
-        color: #0b2b45;
-        font-size: 12px;
-        min-width: 52px;
-        text-align: right;
-      }}
-      @media (max-width: 1100px) {{
-        .mini-grid {{ grid-template-columns: repeat(6, 1fr); }}
-      }}
-      @media (max-width: 650px) {{
-        .mini-grid {{ grid-template-columns: repeat(3, 1fr); }}
-      }}
-    </style>
-    <div class="mini-wrap">
-      <div class="mini-grid">
-        {''.join(cells)}
-      </div>
-    </div>
-    """
-
-    fig.update_layout(meta=dict(mini_table_html=mini_table_html))
-
-    return fig, tabela
+    return fig, tabela_final
 
 def resumo_por_localidade_html(df_base, col_local, selecionado, top_n=12):
     if col_local is None or df_base.empty:
@@ -686,9 +628,6 @@ fig_mensal, tabela_mensal = acumulado_mensal_fig_e_tabela(df_filtro, COL_DATA)
 if fig_mensal is not None:
     fig_mensal = _titulo_plotly(fig_mensal, "ACUMULADO MENSAL DE NOTAS AM – AS", uf_sel)
     st.plotly_chart(fig_mensal, use_container_width=True)
-    _mini = (fig_mensal.layout.meta or {}).get('mini_table_html', '')
-    if _mini:
-        st.markdown(_mini, unsafe_allow_html=True)
 else:
     st.info("Sem dados mensais (DATA vazia/ inválida).")
 
