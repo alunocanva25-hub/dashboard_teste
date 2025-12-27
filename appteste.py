@@ -417,8 +417,8 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     fig.add_annotation(
         xref="paper",
         yref="paper",
-        x=1.23,
-        y=0.12,
+        x=1.2,
+        y=0.09,
         text=f"<b>TOTAL</b><br>{total_geral_fmt}",
         showarrow=False,
         align="center",
