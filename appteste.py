@@ -305,34 +305,36 @@ def barh_contagem(df_base, col_dim, titulo, uf):
     )
 
     fig.update_layout(
-        height=300,
-        margin=dict(l=10, r=10, t=70, b=10),
-        showlegend=False,
-        
-    )
-    # 🔥 Oculta eixo X (escala) — mantém apenas os valores nas barras
-    fig.update_xaxes(visible=False, showticklabels=False, ticks="", showgrid=False, zeroline=False)
+    height=380,
+    margin=dict(l=10, r=180, t=60, b=120),
+    showlegend=False,
+)
 
-    fig.update_traces(
-        textposition="outside",
-        cliponaxis=False
-    )
+fig.update_yaxes(visible=False)
+fig.update_xaxes(title_text="")
+fig.update_annotations(cliponaxis=True)
 
-    fig.update_yaxes(title_text="")
+for _, r in tab.iterrows():
+    mes = r["MÊS"]
 
-    # ✅ TOTAL DO GRÁFICO (único)
+    p = f"{int(r['PROCEDENTE']):,}".replace(",", ".")
+    i = f"{int(r['IMPROCEDENTE']):,}".replace(",", ".")
+    t = f"{int(r['TOTAL']):,}".replace(",", ".")
+
     fig.add_annotation(
-        xref="paper",
+        x=mes,
         yref="paper",
-        x=0.98,
-        y=1.12,
-        text=f"TOTAL: {total_fmt}",
+        y=-0.28,                # ✅ SUBIU
+        xanchor="center",
+        align="center",
         showarrow=False,
-        font=dict(
-            size=13,
-            color="#fcba03",
-            family="Arial Black"
+        text=(
+            f"<span style='color:{COR_PROC}'>■</span> {p}<br>"
+            f"<span style='color:{COR_IMP}'>■</span> {i}<br>"
+            f"<span style='color:#fcba03'>■</span> <b>{t}</b>"
         ),
+        font=dict(size=11, family="Arial Black"),
+    ),
         align="right"
     )
 
