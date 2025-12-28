@@ -427,14 +427,9 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
         yaxis_title=""
     )
 
-    # =====================================================
-# 🟩🟥🟨 LEGENDA ALINHADA COM A TABELA MENSAL
 # =====================================================
-x_leg = 0.02
-y_leg = -0.35
-dy = 0.055
-
-# Procedente
+# 🟩🟥🟨 LEGENDA (boquinhas) – alinhada à tabela mensal
+# =====================================================
 fig.add_annotation(
     xref="paper", yref="paper",
     x=x_leg, y=y_leg,
@@ -444,12 +439,20 @@ fig.add_annotation(
     align="left"
 )
 
-# Improcedente
 fig.add_annotation(
     xref="paper", yref="paper",
     x=x_leg, y=y_leg - dy,
     text=f"<span style='color:{COR_IMP};font-size:16px'>■</span> "
          "<span style='color:white;font-size:14px'><b>IMPROCEDENTE</b></span>",
+    showarrow=False,
+    align="left"
+)
+
+fig.add_annotation(
+    xref="paper", yref="paper",
+    x=x_leg, y=y_leg - (2 * dy),
+    text="<span style='color:#fcba03;font-size:16px'>■</span> "
+         "<span style='color:white;font-size:14px'><b>TOTAL</b></span>",
     showarrow=False,
     align="left"
 )
