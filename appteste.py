@@ -339,137 +339,93 @@ def barh_contagem(df_base, col_dim, titulo, uf):
     return _titulo_plotly(fig, titulo, uf)
 
 
-def acumulado_mensal_fig_e_tabela(df_base, col_data, modo: str = "Mensal"):
-    """
-    Retorna (fig, tabela) do acumulado por período.
-    - modo="Mensal": eixo X por mês (JAN..DEZ)
-    - modo="Semanal": eixo X por semana ISO (S01..S53), seg–sex
-    """
+def acumulado_mensal_fig_e_tabela(df_base, col_data):
     base = df_base.dropna(subset=[col_data]).copy()
     if base.empty:
         return None, None
 
-    classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
+    # =========================
+    # Preparação dos dados
+    # =========================
+    base["MES_NUM"] = base[col_data].dt.month
+    base["MÊS"] = base["MES_NUM"].map(MESES_PT)
 
-    # ============================================
-    # Definição do período (Mês ou Semana)
-    # ============================================
-    modo = (modo or "Mensal").strip().capitalize()
-
-    if modo == "Semanal":
-        # Semana ISO (1..53). Semana útil: seg(1) a sex(5).
-        base["PERIODO_NUM"] = base[col_data].dt.isocalendar().week.astype(int)
-        base["PERIODO"] = base["PERIODO_NUM"].apply(lambda w: f"S{w:02d}")
-
-        periodos_df = pd.DataFrame({"PERIODO_NUM": list(range(1, 54))})
-        periodos_df["PERIODO"] = periodos_df["PERIODO_NUM"].apply(lambda w: f"S{w:02d}")
-        ordem_periodos = periodos_df["PERIODO"].tolist()
-    else:
-        base["PERIODO_NUM"] = base[col_data].dt.month.astype(int)
-        base["PERIODO"] = base["PERIODO_NUM"].map(MESES_PT)
-
-        periodos_df = pd.DataFrame({"PERIODO_NUM": list(range(1, 13))})
-        periodos_df["PERIODO"] = periodos_df["PERIODO_NUM"].map(MESES_PT)
-        ordem_periodos = MESES_ORDEM
-
-    # ============================================
-    # Classificação
-    # ============================================
     base["_CLASSE_"] = "OUTROS"
     base.loc[base["_RES_"].str.contains("PROCED", na=False), "_CLASSE_"] = "PROCEDENTE"
     base.loc[base["_RES_"].str.contains("IMPROCED", na=False), "_CLASSE_"] = "IMPROCEDENTE"
 
-    # ============================================
-    # Contagem + grid completo (para não “sumir” período)
-    # ============================================
+    classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
+
+    # Contagem bruta
     dados_raw = (
-        base.groupby(["PERIODO_NUM", "PERIODO", "_CLASSE_"])
+        base.groupby(["MES_NUM", "MÊS", "_CLASSE_"])
         .size()
         .reset_index(name="QTD")
     )
 
+    # Garante 12 meses + todas classes (para não “sumir” mês sem dado)
+    meses_df = pd.DataFrame({"MES_NUM": list(range(1, 13))})
+    meses_df["MÊS"] = meses_df["MES_NUM"].map(MESES_PT)
+
     grid = (
-        periodos_df.assign(_k=1)
+        meses_df.assign(_k=1)
         .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
         .drop(columns="_k")
     )
 
     dados = (
-        grid.merge(dados_raw, on=["PERIODO_NUM", "PERIODO", "_CLASSE_"], how="left")
+        grid.merge(dados_raw, on=["MES_NUM", "MÊS", "_CLASSE_"], how="left")
         .fillna({"QTD": 0})
     )
     dados["QTD"] = dados["QTD"].astype(int)
 
-    # ============================================
+    # =========================
     # Percentuais (labels nas barras)
-    # ============================================
-    total_periodo = dados.groupby("PERIODO_NUM")["QTD"].transform("sum")
-    dados["PCT"] = ((dados["QTD"] / total_periodo.replace(0, 1)) * 100).round(0).astype(int)
+    # =========================
+    total_mes = dados.groupby("MES_NUM")["QTD"].transform("sum")
+    denom = total_mes.replace(0, 1)  # evita divisão por zero em meses zerados
+    dados["PCT"] = ((dados["QTD"] / denom) * 100).round(0).astype(int)
 
     dados["LABEL"] = ""
-    dados.loc[dados["_CLASSE_"] == "PROCEDENTE", "LABEL"] = dados.loc[dados["_CLASSE_"] == "PROCEDENTE", "PCT"].astype(str) + "%"
-    dados.loc[dados["_CLASSE_"] == "IMPROCEDENTE", "LABEL"] = dados.loc[dados["_CLASSE_"] == "IMPROCEDENTE", "PCT"].astype(str) + "%"
+    mask_p = dados["_CLASSE_"] == "PROCEDENTE"
+    mask_i = dados["_CLASSE_"] == "IMPROCEDENTE"
+    dados.loc[mask_p, "LABEL"] = dados.loc[mask_p, "PCT"].astype(str) + "%"
+    dados.loc[mask_i, "LABEL"] = dados.loc[mask_i, "PCT"].astype(str) + "%"
 
-  # =========================
-# LINHAS-GUIA (estilo tabela)
-# =========================
-y_base = -0.33   # mesma base da tabelinha
-dy = 0.055       # espaçamento entre linhas
-
-# Linha Procedente
-fig.add_shape(
-    type="line",
-    xref="paper", yref="paper",
-    x0=0, x1=1,
-    y0=y_base, y1=y_base,
-    line=dict(color="rgba(255,255,255,0.25)", width=1)
-)
-
-# Linha Improcedente
-fig.add_shape(
-    type="line",
-    xref="paper", yref="paper",
-    x0=0, x1=1,
-    y0=y_base - dy, y1=y_base - dy,
-    line=dict(color="rgba(255,255,255,0.25)", width=1)
-)
-
-# Linha Total
-fig.add_shape(
-    type="line",
-    xref="paper", yref="paper",
-    x0=0, x1=1,
-    y0=y_base - (2 * dy), y1=y_base - (2 * dy),
-    line=dict(color="rgba(255,255,255,0.25)", width=1)
-)
-    # ============================================
-    # Tabela (valores por período)
-    # ============================================
+    # =========================
+    # Tabela (valores por mês)
+    # =========================
     tab = (
-        dados.pivot_table(index=["PERIODO_NUM", "PERIODO"], columns="_CLASSE_", values="QTD", aggfunc="sum", fill_value=0)
+        dados.pivot_table(
+            index=["MES_NUM", "MÊS"],
+            columns="_CLASSE_",
+            values="QTD",
+            aggfunc="sum",
+            fill_value=0
+        )
         .reset_index()
-        .sort_values("PERIODO_NUM")
+        .sort_values("MES_NUM")
     )
+
     for c in classes:
         if c not in tab.columns:
             tab[c] = 0
 
     tab["TOTAL"] = tab["PROCEDENTE"] + tab["IMPROCEDENTE"] + tab["OUTROS"]
-    tabela = tab[["PERIODO", "IMPROCEDENTE", "PROCEDENTE", "TOTAL"]].copy()
-    tabela = tabela.rename(columns={"PERIODO": "PERÍODO"})
+    tabela_final = tab[["MÊS", "IMPROCEDENTE", "PROCEDENTE", "TOTAL"]].copy()
 
-    # ============================================
+    # =========================
     # Gráfico principal
-    # ============================================
+    # =========================
     fig = px.bar(
-        dados.sort_values("PERIODO_NUM"),
-        x="PERIODO",
+        dados.sort_values("MES_NUM"),
+        x="MÊS",
         y="QTD",
         color="_CLASSE_",
         barmode="stack",
         text="LABEL",
         category_orders={
-            "PERIODO": ordem_periodos,
+            "MÊS": MESES_ORDEM,
             "_CLASSE_": ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"],
         },
         color_discrete_map={
@@ -485,62 +441,87 @@ fig.add_shape(
     # Remove eixo Y (lado esquerdo)
     fig.update_yaxes(visible=False, showgrid=False, zeroline=False, showticklabels=False, title_text="")
 
-    # Remove legenda padrão do Plotly (vamos usar “boquinhas”)
+    # Layout (b grande para caber a “tabelinha”)
     fig.update_layout(
         height=520,
-        showlegend=False,
-        margin=dict(l=135, r=150, t=50, b=210),
+        showlegend=False,  # vamos usar “boquinhas”
+        margin=dict(l=120, r=140, t=50, b=190),
         xaxis_title="",
         yaxis_title="",
     )
 
-    # ============================================
-    # "Tabelinha" abaixo de cada período (3 linhas)
-    # - dy = 0.055 (como você pediu)
-    # ============================================
+    # =====================================================
+    # CONTROLES (posição da tabelinha e espaçamentos)
+    # =====================================================
     def _fmt_int(v: int) -> str:
         return f"{int(v):,}".replace(",", ".")
 
-    y_base = -0.33   # mais negativo = mais para baixo
-    dy = 0.055
+    y_base = -0.33     # mais negativo = mais para baixo
+    dy = 0.055         # espaçamento ENTRE as linhas (como você pediu)
 
+    # =====================================================
+    # LINHAS-GUIA (estilo tabela) — 3 linhas horizontais
+    # =====================================================
+    line_style = dict(color="rgba(255,255,255,0.25)", width=1)
+
+    fig.add_shape(
+        type="line", xref="paper", yref="paper",
+        x0=0, x1=1, y0=y_base, y1=y_base,
+        line=line_style
+    )
+    fig.add_shape(
+        type="line", xref="paper", yref="paper",
+        x0=0, x1=1, y0=y_base - dy, y1=y_base - dy,
+        line=line_style
+    )
+    fig.add_shape(
+        type="line", xref="paper", yref="paper",
+        x0=0, x1=1, y0=y_base - (2 * dy), y1=y_base - (2 * dy),
+        line=line_style
+    )
+
+    # =====================================================
+    # “TABELINHA” abaixo de cada mês (só números, cores)
+    # =====================================================
     for _, r in tab.iterrows():
-        periodo = r["PERIODO"]
+        mes = r["MÊS"]
         p = _fmt_int(r["PROCEDENTE"])
         i = _fmt_int(r["IMPROCEDENTE"])
         t = _fmt_int(r["TOTAL"])
 
         # Procedente (verde)
         fig.add_annotation(
-            x=periodo, xref="x",
+            x=mes, xref="x",
             yref="paper", y=y_base,
             text=f"<span style='font-family:monospace;font-size:14px;color:{COR_PROC};'><b>{p}</b></span>",
-            showarrow=False, align="center",
-        )
-        # Improcedente (vermelho)
-        fig.add_annotation(
-            x=periodo, xref="x",
-            yref="paper", y=y_base - dy,
-            text=f"<span style='font-family:monospace;font-size:14px;color:{COR_IMP};'><b>{i}</b></span>",
-            showarrow=False, align="center",
-        )
-        # Total (amarelo)
-        fig.add_annotation(
-            x=periodo, xref="x",
-            yref="paper", y=y_base - (2 * dy),
-            text=f"<span style='font-family:monospace;font-size:14px;color:#fcba03;'><b>{t}</b></span>",
-            showarrow=False, align="center",
+            showarrow=False,
+            align="center",
         )
 
-    # ============================================
-    # Legenda “boquinhas” alinhada com a tabelinha
-    # (mesma altura / espaçamento)
-    # ============================================
-    # Ajuste fino aqui:
-      # Ajuste fino aqui:
-    x_leg = -0.10
-    y_leg = y_base  # mesma altura da primeira linha da tabelinha
-    dy_leg = dy_tab
+        # Improcedente (vermelho)
+        fig.add_annotation(
+            x=mes, xref="x",
+            yref="paper", y=y_base - dy,
+            text=f"<span style='font-family:monospace;font-size:14px;color:{COR_IMP};'><b>{i}</b></span>",
+            showarrow=False,
+            align="center",
+        )
+
+        # Total (amarelo)
+        fig.add_annotation(
+            x=mes, xref="x",
+            yref="paper", y=y_base - (2 * dy),
+            text=f"<span style='font-family:monospace;font-size:14px;color:#fcba03;'><b>{t}</b></span>",
+            showarrow=False,
+            align="center",
+        )
+
+    # =====================================================
+    # LEGENDA “boquinhas” (alinhada com a tabelinha)
+    # -> fica na mesma altura das 3 linhas, à esquerda da 1ª coluna
+    # =====================================================
+    x_leg = -0.08                 # mais negativo = mais à esquerda
+    y_leg = y_base + 0.01         # alinhamento fino com a 1ª linha (verde)
 
     fig.add_annotation(
         xref="paper", yref="paper",
@@ -549,36 +530,41 @@ fig.add_shape(
             f"<span style='color:{COR_PROC};font-size:16px'>■</span> "
             "<span style='color:white;font-size:14px'><b>PROCEDENTE</b></span>"
         ),
-        showarrow=False, align="left",
+        showarrow=False,
+        align="left",
     )
+
     fig.add_annotation(
         xref="paper", yref="paper",
-        x=x_leg, y=y_leg - dy_leg,
+        x=x_leg, y=y_leg - dy,
         text=(
             f"<span style='color:{COR_IMP};font-size:16px'>■</span> "
             "<span style='color:white;font-size:14px'><b>IMPROCEDENTE</b></span>"
         ),
-        showarrow=False, align="left",
+        showarrow=False,
+        align="left",
     )
+
     fig.add_annotation(
         xref="paper", yref="paper",
-        x=x_leg, y=y_leg - (2 * dy_leg),
+        x=x_leg, y=y_leg - (2 * dy),
         text=(
             "<span style='color:#fcba03;font-size:16px'>■</span> "
             "<span style='color:white;font-size:14px'><b>TOTAL</b></span>"
         ),
-        showarrow=False, align="left",
+        showarrow=False,
+        align="left",
     )
 
-    # ============================================
-    # Total geral (quadrado à direita)
-    # ============================================
+    # =====================================================
+    # TOTAL GERAL (quadrado à direita)
+    # =====================================================
     total_geral = int(tab["TOTAL"].sum())
-    total_geral_fmt = _fmt_int(total_geral)
+    total_geral_fmt = f"{total_geral:,}".replace(",", ".")
 
     fig.add_annotation(
         xref="paper", yref="paper",
-        x=1.08, y=0.55,
+        x=1.07, y=0.55,
         text=(
             "<span style='font-size:12px;color:#fcba03'><b>TOTAL</b></span><br>"
             f"<span style='font-size:18px;color:#fcba03'><b>{total_geral_fmt}</b></span>"
@@ -591,7 +577,7 @@ fig.add_shape(
         borderpad=10,
     )
 
-    return fig, tabela
+    return fig, tabela_final
 
 def resumo_por_localidade_html(df_base, col_local, selecionado, top_n=12):
     if col_local is None or df_base.empty:
