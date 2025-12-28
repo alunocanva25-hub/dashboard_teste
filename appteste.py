@@ -521,7 +521,7 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     # -> fica na mesma altura das 3 linhas, à esquerda da 1ª coluna
     # =====================================================
     x_leg = -0.08                 # mais negativo = mais à esquerda
-    y_leg = y_base + 0.020        # alinhamento fino com a 1ª linha (verde)
+    y_leg = y_base + 0.010        # alinhamento fino com a 1ª linha (verde)
 
     fig.add_annotation(
         xref="paper", yref="paper",
