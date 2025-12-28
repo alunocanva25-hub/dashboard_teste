@@ -439,54 +439,58 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
         tickfont=dict(size=12)
     )
 
-    # =====================================================
     # 🟩🟥🟨 LEGENDA (boquinhas) - canto superior esquerdo
-    # =====================================================
-    x_leg = 0.02
-    y_leg = 0.90
-    dy = 0.055
+x_leg = 0.02
+y_leg = 0.90
+dy = 0.055
 
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=x_leg, y=y_leg,
-        text=f"<span style='color:{COR_PROC};font-size:16px'>■</span> "
-             "<span style='color:white;font-size:14px'><b>PROCEDENTE</b></span>",
-        showarrow=False,
-        align="left",
-    )
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=x_leg, y=y_leg - dy,
-        text=f"<span style='color:{COR_IMP};font-size:16px'>■</span> "
-             "<span style='color:white;font-size:14px'><b>IMPROCEDENTE</b></span>",
-        showarrow=False,
-        align="left",
-    )
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=x_leg, y=y_leg - (2 * dy),
-        text="<span style='color:#fcba03;font-size:16px'>■</span> "
-             "<span style='color:white;font-size:14px'><b>TOTAL</b></span>",
-        showarrow=False,
-        align="left",
-    )
+fig.add_annotation(
+    xref="paper", yref="paper",
+    x=x_leg, y=y_leg,
+    text=f"<span style='color:{COR_PROC};font-size:16px'>■</span> "
+         "<span style='color:white;font-size:14px'><b>PROCEDENTE</b></span>",
+    showarrow=False,
+    align="left",
+)
+fig.add_annotation(
+    xref="paper", yref="paper",
+    x=x_leg, y=y_leg - dy,
+    text=f"<span style='color:{COR_IMP};font-size:16px'>■</span> "
+         "<span style='color:white;font-size:14px'><b>IMPROCEDENTE</b></span>",
+    showarrow=False,
+    align="left",
+)
+fig.add_annotation(
+    xref="paper", yref="paper",
+    x=x_leg, y=y_leg - (2 * dy),
+    text="<span style='color:#fcba03;font-size:16px'>■</span> "
+         "<span style='color:white;font-size:14px'><b>TOTAL</b></span>",
+    showarrow=False,
+    align="left",
+)
 
     # =====================================================
     # 🔶 TOTAL GERAL (quadrado à direita)
     # =====================================================
-    total_geral_fmt = f"{int(tab['TOTAL'].sum()):,}".replace(",", ".")
+    # 🔶 TOTAL GERAL (quadrado à direita)
+total_geral_fmt = f"{int(tab['TOTAL'].sum()):,}".replace(",", ".")
 
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=1.07, y=0.66,
-        text=(
-            "<span style='font-size:14px;color:#fcba03'><b>TOTAL</b></span><br>"
-            f"<span style='font-size:26px;color:#fcba03'><b>{total_geral_fmt}</b></span>"
-        ),
-        showarrow=False,
-        align="center",
-        bgcolor="rgba(0,0,0,0.35)",
-        bordercolor="#fcba03",
+fig.add_annotation(
+    xref="paper",
+    yref="paper",
+    x=1.07,
+    y=0.66,
+    text=(
+        "<span style='font-size:14px;color:#fcba03'><b>TOTAL</b></span><br>"
+        f"<span style='font-size:26px;color:#fcba03'><b>{total_geral_fmt}</b></span>"
+    ),
+    showarrow=False,
+    align="center",
+    bgcolor="rgba(0,0,0,0.35)",
+    bordercolor="#fcba03",
+    borderwidth=2,
+    borderpad=10,
+)
 def acumulado_mensal_fig_e_tabela(df_base, col_data):
     base = df_base.dropna(subset=[col_data]).copy()
     if base.empty:
