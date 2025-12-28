@@ -431,9 +431,9 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     # 🟩🟥🟨 LEGENDA (boquinhas) – canto superior esquerdo
     # =====================================================
     # posição base da legenda
-x_leg = 0.02     # esquerda
-y_leg = 0.12     # ponto inicial (mais embaixo)
-dy    = 0.055    # espaçamento vertical entre linhas
+    x_leg = 0.02     # esquerda
+    y_leg = 0.12     # ponto inicial (mais embaixo)
+    dy = 0.055    # espaçamento vertical entre linhas
 
     fig.add_annotation(
         xref="paper", yref="paper",
