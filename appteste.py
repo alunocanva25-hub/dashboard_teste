@@ -476,7 +476,7 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     # =========================
     # Ajustes finos aqui:
     x_leg = - 0.10
-    y_leg = - 0.27
+    y_leg = - 0.29
     dy = 0.055
 
     fig.add_annotation(
