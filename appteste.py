@@ -437,37 +437,37 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
         yaxis_title="",
     )
 
-    # =========================
-    # BLOCO RESUMO À ESQUERDA
-    # =========================
-    x_pos = -0.20
-    y_inicio = 0.50
-    espacamento = 0.08
+# =========================
+# BLOCO RESUMO À ESQUERDA (reposicionado)
+# =========================
+x_pos = -0.32        # <<< esquerda (quadro vermelho)
+y_inicio = -0.12     # <<< alinhado com a tabela mensal
+espacamento = 0.09
 
-    total_proc = int(tab["PROCEDENTE"].sum())
-    total_imp = int(tab["IMPROCEDENTE"].sum())
-    total_geral = int(tab["TOTAL"].sum())
+total_proc = int(tab["PROCEDENTE"].sum())
+total_imp = int(tab["IMPROCEDENTE"].sum())
+total_geral = int(tab["TOTAL"].sum())
 
-    resumo = [
-        (COR_PROC, total_proc),
-        (COR_IMP, total_imp),
-        ("#fcba03", total_geral),
-    ]
+resumo = [
+    (COR_PROC, total_proc),
+    (COR_IMP, total_imp),
+    ("#fcba03", total_geral),
+]
 
-    for i, (cor, valor) in enumerate(resumo):
-        valor_fmt = f"{valor:,}".replace(",", ".")
-        fig.add_annotation(
-            xref="paper",
-            yref="paper",
-            x=x_pos,
-            y=y_inicio - i * espacamento,
-            text=(
-                f"<span style='color:{cor};font-size:20px'>■</span> "
-                f"<span style='color:white;font-size:15px'><b>{valor_fmt}</b></span>"
-            ),
-            showarrow=False,
-            align="left",
-        )
+for i, (cor, valor) in enumerate(resumo):
+    valor_fmt = f"{valor:,}".replace(",", ".")
+    fig.add_annotation(
+        xref="paper",
+        yref="paper",
+        x=x_pos,
+        y=y_inicio - (i * espacamento),
+        text=(
+            f"<span style='color:{cor};font-size:18px'>■</span> "
+            f"<span style='color:white;font-size:14px'><b>{valor_fmt}</b></span>"
+        ),
+        showarrow=False,
+        align="left",
+    )
 
     # =========================
     # TABELA ABAIXO DE CADA MÊS
