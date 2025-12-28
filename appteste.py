@@ -441,35 +441,54 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     )
 
     # =========================
-    # "TABELINHA" abaixo de cada mês (3 linhas: verde/vermelho/amarelo)
-    # =========================
-    def _fmt_int(v: int) -> str:
-        return f"{int(v):,}".replace(",", ".")
+# "TABELINHA" abaixo de cada mês
+# 3 linhas: Procedente / Improcedente / Total
+# =========================
+def _fmt_int(v: int) -> str:
+    return f"{int(v):,}".replace(",", ".")
 
-    y_tabela = -0.33  # mais negativo = mais para baixo
+y_base = -0.33   # posição vertical inicial (mais negativo = mais para baixo)
+dy = 0.055       # espaçamento ENTRE as linhas (como você pediu)
 
-    for _, r in tab.iterrows():
-        mes = r["MÊS"]
+for _, r in tab.iterrows():
+    mes = r["MÊS"]
 
-        p = _fmt_int(r["PROCEDENTE"])
-        i = _fmt_int(r["IMPROCEDENTE"])
-        t = _fmt_int(r["TOTAL"])
+    p = _fmt_int(r["PROCEDENTE"])
+    i = _fmt_int(r["IMPROCEDENTE"])
+    t = _fmt_int(r["TOTAL"])
 
-        text = (
-            f"<span style='font-family:monospace;font-size:14px;color:{COR_PROC};'><b>{p}</b></span><br>"
-            f"<span style='font-family:monospace;font-size:14px;color:{COR_IMP};'><b>{i}</b></span><br>"
-            f"<span style='font-family:monospace;font-size:14px;color:#fcba03;'><b>{t}</b></span>"
-        )
+    # PROCEDENTE (verde)
+    fig.add_annotation(
+        x=mes,
+        xref="x",
+        yref="paper",
+        y=y_base,
+        text=f"<span style='font-family:monospace;font-size:14px;color:{COR_PROC};'><b>{p}</b></span>",
+        showarrow=False,
+        align="center",
+    )
 
-        fig.add_annotation(
-            x=mes,
-            xref="x",
-            yref="paper",
-            y=y_tabela,
-            text=text,
-            showarrow=False,
-            align="center",
-        )
+    # IMPROCEDENTE (vermelho)
+    fig.add_annotation(
+        x=mes,
+        xref="x",
+        yref="paper",
+        y=y_base - dy,
+        text=f"<span style='font-family:monospace;font-size:14px;color:{COR_IMP};'><b>{i}</b></span>",
+        showarrow=False,
+        align="center",
+    )
+
+    # TOTAL (amarelo)
+    fig.add_annotation(
+        x=mes,
+        xref="x",
+        yref="paper",
+        y=y_base - (2 * dy),
+        text="<span style='font-family:monospace;font-size:14px;color:#fcba03;'><b>{}</b></span>".format(t),
+        showarrow=False,
+        align="center",
+    )
 
     # =========================
     # LEGENDA (boquinhas) alinhada com a tabelinha mensal (mesma “altura”)
