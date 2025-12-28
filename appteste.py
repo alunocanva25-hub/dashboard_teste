@@ -374,21 +374,20 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     # Tabela base (usada para totais)
     # =========================
     tab = (
-        dados.pivot_table(
-            index=["MES_NUM", "MÊS"],
-            columns="_CLASSE_",
-            values="QTD",
-            fill_value=0
-        )
+        dados.pivot_table(index=["MES_NUM", "MÊS"], columns="_CLASSE_", values="QTD", fill_value=0)
         .reset_index()
-        .sort_values("MES_NUM")
     )
-
     for c in ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]:
         if c not in tab.columns:
             tab[c] = 0
 
     tab["TOTAL"] = tab["PROCEDENTE"] + tab["IMPROCEDENTE"] + tab["OUTROS"]
+
+    # garante 12 meses (mesmo quando algum mês não tem dado)
+    meses_df = pd.DataFrame({"MES_NUM": list(range(1, 13))})
+    meses_df["MÊS"] = meses_df["MES_NUM"].map(MESES_PT)
+    tab = meses_df.merge(tab, on=["MES_NUM", "MÊS"], how="left").fillna(0)
+    tab[["PROCEDENTE", "IMPROCEDENTE", "OUTROS", "TOTAL"]] = tab[["PROCEDENTE", "IMPROCEDENTE", "OUTROS", "TOTAL"]].astype(int)
 
     tabela_final = tab[["MÊS", "IMPROCEDENTE", "PROCEDENTE", "TOTAL"]].copy()
 
@@ -402,52 +401,52 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
         color="_CLASSE_",
         barmode="stack",
         text="LABEL",
-        category_orders={
-            "MÊS": MESES_ORDEM,
-            "_CLASSE_": ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
-        },
-        color_discrete_map={
-            "PROCEDENTE": COR_PROC,
-            "IMPROCEDENTE": COR_IMP,
-            "OUTROS": COR_OUT
-        },
-        template="plotly_dark"
+        category_orders={"MÊS": MESES_ORDEM, "_CLASSE_": ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]},
+        color_discrete_map={"PROCEDENTE": COR_PROC, "IMPROCEDENTE": COR_IMP, "OUTROS": COR_OUT},
+        template="plotly_dark",
     )
 
     fig.update_traces(textposition="outside", cliponaxis=False)
 
+    # 🔥 remove o eixo da esquerda (y) por completo
+    fig.update_yaxes(visible=False, showgrid=False, zeroline=False, showticklabels=False, title_text="")
+
+    # =========================
+    # Layout (b grande para caber a "tabelinha" abaixo)
+    # =========================
     fig.update_layout(
-        height=420,
-        showlegend=False,                 # ❌ remove legenda inferior
+        height=520,
+        showlegend=False,
         margin=dict(
-            l=140,                        # ⬅️ espaço para o bloco à esquerda
+            l=140,   # espaço para o bloco à esquerda
             r=40,
             t=50,
-            b=80
+            b=220    # ⬅️ AQUI é onde "aparecem" os números por mês
         ),
         xaxis_title="",
-        yaxis_title=""
+        yaxis_title="",
     )
 
     # =====================================================
-    # 🔢 BLOCO RESUMO (tipo tabela) À ESQUERDA DO GRÁFICO
+    # 🔢 BLOCO RESUMO À ESQUERDA DO GRÁFICO (mantém)
     # =====================================================
+    x_pos = -0.20
+    y_inicio = 0.50
+    espacamento = 0.08
 
-    # 🔧 CONTROLES DE POSIÇÃO (AJUSTE AQUI 👇)
-    x_pos = -0.20        # ➡️ (-) mais esquerda | (+) mais direita
-    y_inicio = 0.50      # ⬆️ aumenta sobe | ⬇️ diminui desce
-    espacamento = 0.08   # distância entre linhas
+    total_proc = int(tab["PROCEDENTE"].sum())
+    total_imp = int(tab["IMPROCEDENTE"].sum())
+    total_geral = int(tab["TOTAL"].sum())
 
     resumo = [
-        ("#2e7d32", int(tab["PROCEDENTE"].sum())),    # Procedente (verde)
-        ("#c62828", int(tab["IMPROCEDENTE"].sum())),  # Improcedente (vermelho)
-        ("#fcba03", int(tab["TOTAL"].sum())),         # Total (amarelo)
+        (COR_PROC, total_proc),
+        (COR_IMP, total_imp),
+        ("#fcba03", total_geral),
     ]
 
     for i, (cor, valor) in enumerate(resumo):
         y = y_inicio - (i * espacamento)
         valor_fmt = f"{valor:,}".replace(",", ".")
-
         fig.add_annotation(
             xref="paper",
             yref="paper",
@@ -458,7 +457,48 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
                 f"<span style='color:white;font-size:15px'><b>{valor_fmt}</b></span>"
             ),
             showarrow=False,
-            align="left"
+            align="left",
+        )
+
+    # =====================================================
+    # ✅ "TABELA" ABAIXO DE CADA MÊS (só números, cores)
+    #    - 3 linhas: Procedente (verde), Improcedente (vermelho), Total (amarelo)
+    #    - centralizado em cada mês
+    # =====================================================
+    def _pad_nbsp(s: str, width: int = 6) -> str:
+        # HTML colapsa espaços, então usamos &nbsp;
+        s = str(s)
+        n = max(0, width - len(s))
+        return ("&nbsp;" * n) + s
+
+    y_tabela = -0.36  # controla “altura” da tabela abaixo (mais negativo = mais para baixo)
+
+    for _, r in tab.iterrows():
+        mes = r["MÊS"]
+
+        p = f"{int(r['PROCEDENTE']):,}".replace(",", ".")
+        i = f"{int(r['IMPROCEDENTE']):,}".replace(",", ".")
+        t = f"{int(r['TOTAL']):,}".replace(",", ".")
+
+        p2 = _pad_nbsp(p, 6)
+        i2 = _pad_nbsp(i, 6)
+        t2 = _pad_nbsp(t, 6)
+
+        # texto “tabelado” (monospace + nbsp)
+        text = (
+            f"<span style='font-family:monospace; font-size:13px; color:{COR_PROC};'><b>{p2}</b></span><br>"
+            f"<span style='font-family:monospace; font-size:13px; color:{COR_IMP};'><b>{i2}</b></span><br>"
+            f"<span style='font-family:monospace; font-size:13px; color:#fcba03;'><b>{t2}</b></span>"
+        )
+
+        fig.add_annotation(
+            x=mes,
+            xref="x",
+            yref="paper",
+            y=y_tabela,
+            text=text,
+            showarrow=False,
+            align="center",
         )
 
     return fig, tabela_final
