@@ -557,17 +557,17 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     )
 
     # =========================
-# TOTAL GERAL (quadrado à direita) - 3 linhas (TOTAL / PROCEDENTE / IMPROCEDENTE)
-# =========================
-total_geral = int(tab["TOTAL"].sum())
-total_proc  = int(tab["PROCEDENTE"].sum())
-total_imp   = int(tab["IMPROCEDENTE"].sum())
+    # TOTAL GERAL (quadrado à direita) - 3 linhas (TOTAL / PROCEDENTE / IMPROCEDENTE)
+    # =========================
+    total_geral = int(tab["TOTAL"].sum())
+    total_proc  = int(tab["PROCEDENTE"].sum())
+    total_imp   = int(tab["IMPROCEDENTE"].sum())
 
-total_geral_fmt = f"{total_geral:,}".replace(",", ".")
-total_proc_fmt  = f"{total_proc:,}".replace(",", ".")
-total_imp_fmt   = f"{total_imp:,}".replace(",", ".")
+    total_geral_fmt = f"{total_geral:,}".replace(",", ".")
+    total_proc_fmt  = f"{total_proc:,}".replace(",", ".")
+    total_imp_fmt   = f"{total_imp:,}".replace(",", ".")
 
-fig.add_annotation(
+    fig.add_annotation(
     xref="paper",
     yref="paper",
     x=1.07,           # ➡️ mais pra direita / esquerda
