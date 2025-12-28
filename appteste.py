@@ -475,8 +475,8 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     # LEGENDA (boquinhas) alinhada com a tabelinha mensal (mesma “altura”)
     # =========================
     # Ajustes finos aqui:
-    x_leg = 0.03
-    y_leg = y_tabela - 0.20
+    x_leg = 0.01
+    y_leg = y_tabela - 0.5
     dy = 0.055
 
     fig.add_annotation(
