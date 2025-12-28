@@ -444,46 +444,41 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
         align="left"
     )
 
+   
     # =====================================================
-    # 🔢 BLOCO RESUMO À ESQUERDA (totais gerais)
-    # =====================================================
-    resumo = [
-        (COR_PROC, int(tab["PROCEDENTE"].sum())),
-        (COR_IMP, int(tab["IMPROCEDENTE"].sum())),
-        ("#fcba03", int(tab["TOTAL"].sum())),
-    ]
+# 🟩🟥🟨 LEGENDA VISUAL (APENAS BOQUINHAS + TEXTO)
+# Local exato conforme imagem enviada
+# =====================================================
 
-    y_inicio = 0.52
-    for i, (cor, valor) in enumerate(resumo):
-        fig.add_annotation(
-            xref="paper", yref="paper",
-            x=-0.18,
-            y=y_inicio - (i * 0.08),
-            text=f"<span style='color:{cor};font-size:18px'>■</span> "
-                 f"<span style='color:white;font-size:15px'><b>{valor:,}</b></span>".replace(",", "."),
-            showarrow=False,
-            align="left"
-        )
+x_leg = -0.18   # controla esquerda/direita
+y_leg = 0.78    # controla altura
 
-    # =====================================================
-    # 📊 TABELA NUMÉRICA ABAIXO DE CADA MÊS
-    # =====================================================
-    y_tabela = -0.36
+fig.add_annotation(
+    xref="paper", yref="paper",
+    x=x_leg, y=y_leg,
+    text=f"<span style='color:{COR_PROC};font-size:16px'>■</span> "
+         "<span style='color:white;font-size:14px'>PROCEDENTE</span>",
+    showarrow=False,
+    align="left"
+)
 
-    for _, r in tab.iterrows():
-        fig.add_annotation(
-            x=r["MÊS"],
-            xref="x",
-            yref="paper",
-            y=y_tabela,
-            text=(
-                f"<span style='font-family:monospace;color:{COR_PROC}'><b>{int(r['PROCEDENTE']):,}</b></span><br>"
-                f"<span style='font-family:monospace;color:{COR_IMP}'><b>{int(r['IMPROCEDENTE']):,}</b></span><br>"
-                f"<span style='font-family:monospace;color:#fcba03'><b>{int(r['TOTAL']):,}</b></span>"
-            ).replace(",", "."),
-            showarrow=False,
-            align="center"
-        )
+fig.add_annotation(
+    xref="paper", yref="paper",
+    x=x_leg, y=y_leg - 0.06,
+    text=f"<span style='color:{COR_IMP};font-size:16px'>■</span> "
+         "<span style='color:white;font-size:14px'>IMPROCEDENTE</span>",
+    showarrow=False,
+    align="left"
+)
+
+fig.add_annotation(
+    xref="paper", yref="paper",
+    x=x_leg, y=y_leg - 0.12,
+    text="<span style='color:#fcba03;font-size:16px'>■</span> "
+         "<span style='color:white;font-size:14px'>TOTAL</span>",
+    showarrow=False,
+    align="left"
+)
 
     # =====================================================
     # 🔶 TOTAL GERAL — QUADRADO À DIREITA
