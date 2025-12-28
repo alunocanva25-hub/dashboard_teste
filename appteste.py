@@ -465,7 +465,7 @@ fig.add_annotation(
          "<span style='color:white;font-size:14px'><b>TOTAL</b></span>",
     showarrow=False,
     align="left"
-)
+    )
 
     # =====================================================
     # 🔢 TABELA NUMÉRICA ABAIXO DE CADA MÊS
