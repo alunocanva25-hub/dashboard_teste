@@ -258,7 +258,7 @@ def _titulo_plotly(fig, titulo: str, uf: str):
     uf_txt = uf if uf != "TOTAL" else "TODOS"
     fig.update_layout(
         title=f"{titulo} • {uf_txt}",
-        title_x=0.0,
+        title_x=0.5,
         title_font=dict(size=14, color="#FFFFFF", family="Arial Black")
     )
     return fig
@@ -338,83 +338,106 @@ def barh_contagem(df_base, col_dim, titulo, uf):
 
     return _titulo_plotly(fig, titulo, uf)
 
-def acumulado_mensal_fig_e_tabela(df_base, col_data):
+
+def acumulado_mensal_fig_e_tabela(df_base, col_data, modo: str = "Mensal"):
+    """
+    Retorna (fig, tabela) do acumulado por período.
+    - modo="Mensal": eixo X por mês (JAN..DEZ)
+    - modo="Semanal": eixo X por semana ISO (S01..S53), seg–sex
+    """
     base = df_base.dropna(subset=[col_data]).copy()
     if base.empty:
         return None, None
 
-    # =========================
-    # Preparação dos dados
-    # =========================
-    base["MES_NUM"] = base[col_data].dt.month
-    base["MÊS"] = base["MES_NUM"].map(MESES_PT)
+    classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
 
+    # ============================================
+    # Definição do período (Mês ou Semana)
+    # ============================================
+    modo = (modo or "Mensal").strip().capitalize()
+
+    if modo == "Semanal":
+        # Semana ISO (1..53). Semana útil: seg(1) a sex(5).
+        base["PERIODO_NUM"] = base[col_data].dt.isocalendar().week.astype(int)
+        base["PERIODO"] = base["PERIODO_NUM"].apply(lambda w: f"S{w:02d}")
+
+        periodos_df = pd.DataFrame({"PERIODO_NUM": list(range(1, 54))})
+        periodos_df["PERIODO"] = periodos_df["PERIODO_NUM"].apply(lambda w: f"S{w:02d}")
+        ordem_periodos = periodos_df["PERIODO"].tolist()
+    else:
+        base["PERIODO_NUM"] = base[col_data].dt.month.astype(int)
+        base["PERIODO"] = base["PERIODO_NUM"].map(MESES_PT)
+
+        periodos_df = pd.DataFrame({"PERIODO_NUM": list(range(1, 13))})
+        periodos_df["PERIODO"] = periodos_df["PERIODO_NUM"].map(MESES_PT)
+        ordem_periodos = MESES_ORDEM
+
+    # ============================================
+    # Classificação
+    # ============================================
     base["_CLASSE_"] = "OUTROS"
     base.loc[base["_RES_"].str.contains("PROCED", na=False), "_CLASSE_"] = "PROCEDENTE"
     base.loc[base["_RES_"].str.contains("IMPROCED", na=False), "_CLASSE_"] = "IMPROCEDENTE"
 
-    classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
-
-    # Contagem bruta
+    # ============================================
+    # Contagem + grid completo (para não “sumir” período)
+    # ============================================
     dados_raw = (
-        base.groupby(["MES_NUM", "MÊS", "_CLASSE_"])
+        base.groupby(["PERIODO_NUM", "PERIODO", "_CLASSE_"])
         .size()
         .reset_index(name="QTD")
     )
 
-    # Garante 12 meses + classes
-    meses_df = pd.DataFrame({"MES_NUM": list(range(1, 13))})
-    meses_df["MÊS"] = meses_df["MES_NUM"].map(MESES_PT)
-
     grid = (
-        meses_df.assign(_k=1)
+        periodos_df.assign(_k=1)
         .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
         .drop(columns="_k")
     )
 
     dados = (
-        grid.merge(dados_raw, on=["MES_NUM", "MÊS", "_CLASSE_"], how="left")
+        grid.merge(dados_raw, on=["PERIODO_NUM", "PERIODO", "_CLASSE_"], how="left")
         .fillna({"QTD": 0})
     )
     dados["QTD"] = dados["QTD"].astype(int)
 
-    # =========================
+    # ============================================
     # Percentuais (labels nas barras)
-    # =========================
-    total_mes = dados.groupby("MES_NUM")["QTD"].transform("sum")
-    dados["PCT"] = ((dados["QTD"] / total_mes.replace(0, 1)) * 100).round(0).astype(int)
+    # ============================================
+    total_periodo = dados.groupby("PERIODO_NUM")["QTD"].transform("sum")
+    dados["PCT"] = ((dados["QTD"] / total_periodo.replace(0, 1)) * 100).round(0).astype(int)
 
     dados["LABEL"] = ""
     dados.loc[dados["_CLASSE_"] == "PROCEDENTE", "LABEL"] = dados.loc[dados["_CLASSE_"] == "PROCEDENTE", "PCT"].astype(str) + "%"
     dados.loc[dados["_CLASSE_"] == "IMPROCEDENTE", "LABEL"] = dados.loc[dados["_CLASSE_"] == "IMPROCEDENTE", "PCT"].astype(str) + "%"
 
-    # =========================
-    # Tabela (valores por mês)
-    # =========================
+    # ============================================
+    # Tabela (valores por período)
+    # ============================================
     tab = (
-        dados.pivot_table(index=["MES_NUM", "MÊS"], columns="_CLASSE_", values="QTD", aggfunc="sum", fill_value=0)
+        dados.pivot_table(index=["PERIODO_NUM", "PERIODO"], columns="_CLASSE_", values="QTD", aggfunc="sum", fill_value=0)
         .reset_index()
-        .sort_values("MES_NUM")
+        .sort_values("PERIODO_NUM")
     )
     for c in classes:
         if c not in tab.columns:
             tab[c] = 0
 
     tab["TOTAL"] = tab["PROCEDENTE"] + tab["IMPROCEDENTE"] + tab["OUTROS"]
-    tabela_final = tab[["MÊS", "IMPROCEDENTE", "PROCEDENTE", "TOTAL"]].copy()
+    tabela = tab[["PERIODO", "IMPROCEDENTE", "PROCEDENTE", "TOTAL"]].copy()
+    tabela = tabela.rename(columns={"PERIODO": "PERÍODO"})
 
-    # =========================
+    # ============================================
     # Gráfico principal
-    # =========================
+    # ============================================
     fig = px.bar(
-        dados.sort_values("MES_NUM"),
-        x="MÊS",
+        dados.sort_values("PERIODO_NUM"),
+        x="PERIODO",
         y="QTD",
         color="_CLASSE_",
         barmode="stack",
         text="LABEL",
         category_orders={
-            "MÊS": MESES_ORDEM,
+            "PERIODO": ordem_periodos,
             "_CLASSE_": ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"],
         },
         color_discrete_map={
@@ -430,96 +453,88 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     # Remove eixo Y (lado esquerdo)
     fig.update_yaxes(visible=False, showgrid=False, zeroline=False, showticklabels=False, title_text="")
 
-    # Remove legenda padrão do Plotly
+    # Remove legenda padrão do Plotly (vamos usar “boquinhas”)
     fig.update_layout(
         height=520,
         showlegend=False,
-        margin=dict(l=120, r=140, t=50, b=190),
+        margin=dict(l=135, r=150, t=50, b=210),
         xaxis_title="",
         yaxis_title="",
     )
 
-    # =========================
-    # "TABELINHA" abaixo de cada mês (3 linhas)
-    # =========================
+    # ============================================
+    # "Tabelinha" abaixo de cada período (3 linhas)
+    # - dy = 0.055 (como você pediu)
+    # ============================================
     def _fmt_int(v: int) -> str:
         return f"{int(v):,}".replace(",", ".")
 
     y_base = -0.33   # mais negativo = mais para baixo
-    dy_tab = 0.055   # espaçamento ENTRE as linhas
+    dy = 0.055
 
     for _, r in tab.iterrows():
-        mes = r["MÊS"]
-
+        periodo = r["PERIODO"]
         p = _fmt_int(r["PROCEDENTE"])
         i = _fmt_int(r["IMPROCEDENTE"])
         t = _fmt_int(r["TOTAL"])
 
+        # Procedente (verde)
         fig.add_annotation(
-            x=mes, xref="x",
+            x=periodo, xref="x",
             yref="paper", y=y_base,
             text=f"<span style='font-family:monospace;font-size:14px;color:{COR_PROC};'><b>{p}</b></span>",
             showarrow=False, align="center",
         )
+        # Improcedente (vermelho)
         fig.add_annotation(
-            x=mes, xref="x",
-            yref="paper", y=y_base - dy_tab,
+            x=periodo, xref="x",
+            yref="paper", y=y_base - dy,
             text=f"<span style='font-family:monospace;font-size:14px;color:{COR_IMP};'><b>{i}</b></span>",
             showarrow=False, align="center",
         )
+        # Total (amarelo)
         fig.add_annotation(
-            x=mes, xref="x",
-            yref="paper", y=y_base - (2 * dy_tab),
+            x=periodo, xref="x",
+            yref="paper", y=y_base - (2 * dy),
             text=f"<span style='font-family:monospace;font-size:14px;color:#fcba03;'><b>{t}</b></span>",
             showarrow=False, align="center",
         )
 
-    # =========================
-    # LEGENDA (boquinhas) alinhada com a tabelinha mensal
-    # =========================
-    # Ajuste fino aqui:
-    x_leg = -0.10
-    y_leg = y_base  # mesma altura da primeira linha da tabelinha
-    dy_leg = dy_tab
+    # ============================================
+    # Legenda “boquinhas” alinhada com a tabelinha
+    # (mesma altura / espaçamento)
+    # ============================================
+    x_leg = -0.08   # mais à esquerda -> mais negativo
+    y_leg = y_base + 0.02
 
     fig.add_annotation(
         xref="paper", yref="paper",
         x=x_leg, y=y_leg,
-        text=(
-            f"<span style='color:{COR_PROC};font-size:16px'>■</span> "
-            "<span style='color:white;font-size:14px'><b>PROCEDENTE</b></span>"
-        ),
+        text=f"<span style='color:{COR_PROC};font-size:16px'>■</span> <span style='color:white;font-size:14px'><b>PROCEDENTE</b></span>",
         showarrow=False, align="left",
     )
     fig.add_annotation(
         xref="paper", yref="paper",
-        x=x_leg, y=y_leg - dy_leg,
-        text=(
-            f"<span style='color:{COR_IMP};font-size:16px'>■</span> "
-            "<span style='color:white;font-size:14px'><b>IMPROCEDENTE</b></span>"
-        ),
+        x=x_leg, y=y_leg - dy,
+        text=f"<span style='color:{COR_IMP};font-size:16px'>■</span> <span style='color:white;font-size:14px'><b>IMPROCEDENTE</b></span>",
         showarrow=False, align="left",
     )
     fig.add_annotation(
         xref="paper", yref="paper",
-        x=x_leg, y=y_leg - (2 * dy_leg),
-        text=(
-            "<span style='color:#fcba03;font-size:16px'>■</span> "
-            "<span style='color:white;font-size:14px'><b>TOTAL</b></span>"
-        ),
+        x=x_leg, y=y_leg - (2 * dy),
+        text="<span style='color:#fcba03;font-size:16px'>■</span> <span style='color:white;font-size:14px'><b>TOTAL</b></span>",
         showarrow=False, align="left",
     )
 
-    # =========================
-    # TOTAL GERAL (quadrado à direita)
-    # =========================
+    # ============================================
+    # Total geral (quadrado à direita)
+    # ============================================
     total_geral = int(tab["TOTAL"].sum())
-    total_geral_fmt = f"{total_geral:,}".replace(",", ".")
+    total_geral_fmt = _fmt_int(total_geral)
 
     fig.add_annotation(
         xref="paper", yref="paper",
-        x=1.07,
-        y=0.55,
+        x=1.08, y=0.55,
         text=(
             "<span style='font-size:12px;color:#fcba03'><b>TOTAL</b></span><br>"
             f"<span style='font-size:18px;color:#fcba03'><b>{total_geral_fmt}</b></span>"
@@ -532,7 +547,7 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
         borderpad=10,
     )
 
-    return fig, tabela_final
+    return fig, tabela
 
 def resumo_por_localidade_html(df_base, col_local, selecionado, top_n=12):
     if col_local is None or df_base.empty:
@@ -583,9 +598,83 @@ df[COL_DATA] = pd.to_datetime(df[COL_DATA], errors="coerce", dayfirst=True)
 df["_TIPO_"] = df[COL_TIPO].astype(str).str.upper().str.strip()
 df["_RES_"]  = df[COL_RESULTADO].astype(str).str.upper().str.strip()
 
-ano_ref = int(df[COL_DATA].dt.year.dropna().max()) if df[COL_DATA].notna().any() else None
-df_ano = df if ano_ref is None else df[df[COL_DATA].dt.year == ano_ref].copy()
-ano_txt = str(ano_ref) if ano_ref else "—"
+
+# ======================================================
+# SELETORES (Ano • Mensal/Semanal • Calendário • Semana)
+# - Semana: segunda a sexta (ISO week)
+# ======================================================
+from datetime import date
+
+# anos disponíveis na base
+anos_disponiveis = sorted(df[COL_DATA].dropna().dt.year.unique().astype(int).tolist())
+ano_padrao = anos_disponiveis[-1] if anos_disponiveis else None
+
+c_sel1, c_sel2, c_sel3, c_sel4 = st.columns([1.0, 1.3, 2.2, 2.0], gap="medium")
+
+with c_sel1:
+    ano_sel = st.selectbox(
+        "Ano",
+        options=anos_disponiveis if anos_disponiveis else ["—"],
+        index=(len(anos_disponiveis) - 1) if anos_disponiveis else 0,
+        key="ano_sel",
+    )
+    if ano_sel == "—":
+        ano_sel = None
+
+with c_sel2:
+    modo_periodo = st.segmented_control(
+        "Período",
+        options=["Mensal", "Semanal"],
+        default=st.session_state.get("modo_periodo", "Mensal"),
+        key="modo_periodo",
+    )
+
+# base filtrada por ano (para calcular datas/semana)
+df_ano = df if ano_sel is None else df[df[COL_DATA].dt.year == int(ano_sel)].copy()
+ano_txt = str(ano_sel) if ano_sel else "—"
+
+# range padrão (por ano)
+if not df_ano.empty and df_ano[COL_DATA].notna().any():
+    _min_d = df_ano[COL_DATA].min().date()
+    _max_d = df_ano[COL_DATA].max().date()
+else:
+    _min_d = date.today()
+    _max_d = date.today()
+
+with c_sel3:
+    data_ini, data_fim = st.date_input(
+        "Filtro por calendário (início/fim)",
+        value=(st.session_state.get("data_ini", _min_d), st.session_state.get("data_fim", _max_d)),
+        min_value=_min_d,
+        max_value=_max_d,
+        key="range_calendario",
+    )
+
+# seletor de semana (só no modo semanal)
+with c_sel4:
+    semana_sel = None
+    if modo_periodo == "Semanal" and not df_ano.empty:
+        semanas_disp = sorted(df_ano[COL_DATA].dropna().dt.isocalendar().week.unique().astype(int).tolist())
+        opcoes_sem = ["Todas"] + [f"S{w:02d}" for w in semanas_disp]
+        semana_sel = st.selectbox("Semana (S01..S53)", opcoes_sem, index=0, key="semana_sel")
+
+# aplicar filtro semanal (se selecionada) – semana ISO, seg(1) a sex(5)
+if modo_periodo == "Semanal" and semana_sel and semana_sel != "Todas" and ano_sel is not None:
+    w = int(str(semana_sel).replace("S", ""))
+    try:
+        data_ini = date.fromisocalendar(int(ano_sel), w, 1)  # segunda
+        data_fim = date.fromisocalendar(int(ano_sel), w, 5)  # sexta
+        st.caption(f"Semana {semana_sel}: {data_ini.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')} (seg–sex)")
+    except ValueError:
+        st.warning("Semana inválida para este ano (ISO). Usando o filtro por calendário.")
+
+# aplicar filtro por calendário (inclusive)
+df_periodo = df_ano.copy()
+if not df_periodo.empty and df_periodo[COL_DATA].notna().any():
+    _dini = pd.to_datetime(data_ini)
+    _dfim = pd.to_datetime(data_fim) + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
+    df_periodo = df_periodo[(df_periodo[COL_DATA] >= _dini) & (df_periodo[COL_DATA] <= _dfim)].copy()
+
 
 # ======================================================
 # "ABAS" UF
@@ -597,7 +686,7 @@ if "uf_sel" not in st.session_state:
 uf_sel = st.segmented_control(label="", options=ufs, default=st.session_state.uf_sel)
 st.session_state.uf_sel = uf_sel
 
-df_filtro = df_ano if uf_sel == "TOTAL" else df_ano[df_ano[COL_ESTADO].astype(str).str.upper() == uf_sel]
+df_filtro = df_periodo if uf_sel == "TOTAL" else df_periodo[df_periodo[COL_ESTADO].astype(str).str.upper() == uf_sel]
 df_am = df_filtro[df_filtro["_TIPO_"].str.contains("AM", na=False)]
 df_as = df_filtro[df_filtro["_TIPO_"].str.contains("AS", na=False)]
 
@@ -630,7 +719,7 @@ with row1[0]:
             <div style="font-weight:950;color:#0b2b45;margin-bottom:8px;text-transform:uppercase;">
               Notas por localidade
             </div>
-            {resumo_por_localidade_html(df_ano, COL_ESTADO, uf_sel, top_n=12)}
+            {resumo_por_localidade_html(df_periodo, COL_ESTADO, uf_sel, top_n=12)}
           </div>
         </div>
         """,
