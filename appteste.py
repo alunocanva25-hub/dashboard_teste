@@ -428,37 +428,41 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     )
 
     # =====================================================
-    # 🟩🟥🟨 LEGENDA (boquinhas) – canto superior esquerdo
-    # =====================================================
-    # posição base da legenda
-    x_leg = 0.02     # esquerda
-    y_leg = 0.12     # ponto inicial (mais embaixo)
-    dy = 0.055    # espaçamento vertical entre linhas
+# 🟩🟥🟨 LEGENDA ALINHADA COM A TABELA MENSAL
+# =====================================================
+x_leg = 0.02
+y_leg = -0.36
+dy = 0.055
 
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=x_leg, y=y_leg,
-        text=f"<span style='color:{COR_PROC};font-size:16px'>■</span> "
-             "<span style='color:white;font-size:14px'><b>PROCEDENTE</b></span>",
-        showarrow=False,
-        align="left"
-    )
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=x_leg, y=y_leg - dy,
-        text=f"<span style='color:{COR_IMP};font-size:16px'>■</span> "
-             "<span style='color:white;font-size:14px'><b>IMPROCEDENTE</b></span>",
-        showarrow=False,
-        align="left"
-    )
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=x_leg, y=y_leg - (2 * dy),
-        text="<span style='color:#fcba03;font-size:16px'>■</span> "
-             "<span style='color:white;font-size:14px'><b>TOTAL</b></span>",
-        showarrow=False,
-        align="left"
-    )
+# Procedente
+fig.add_annotation(
+    xref="paper", yref="paper",
+    x=x_leg, y=y_leg,
+    text=f"<span style='color:{COR_PROC};font-size:16px'>■</span> "
+         "<span style='color:white;font-size:14px'><b>PROCEDENTE</b></span>",
+    showarrow=False,
+    align="left"
+)
+
+# Improcedente
+fig.add_annotation(
+    xref="paper", yref="paper",
+    x=x_leg, y=y_leg - dy,
+    text=f"<span style='color:{COR_IMP};font-size:16px'>■</span> "
+         "<span style='color:white;font-size:14px'><b>IMPROCEDENTE</b></span>",
+    showarrow=False,
+    align="left"
+)
+
+# Total
+fig.add_annotation(
+    xref="paper", yref="paper",
+    x=x_leg, y=y_leg - (2 * dy),
+    text="<span style='color:#fcba03;font-size:16px'>■</span> "
+         "<span style='color:white;font-size:14px'><b>TOTAL</b></span>",
+    showarrow=False,
+    align="left"
+)
 
     # =====================================================
     # 🔢 TABELA NUMÉRICA ABAIXO DE CADA MÊS
