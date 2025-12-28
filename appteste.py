@@ -456,7 +456,7 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     def _fmt_int(v: int) -> str:
         return f"{int(v):,}".replace(",", ".")
 
-    y_base = -0.28     # mais negativo = mais para baixo
+    y_base = -0.23     # mais negativo = mais para baixo
     dy = 0.055         # espaçamento ENTRE as linhas (como você pediu)
 
     # =====================================================
