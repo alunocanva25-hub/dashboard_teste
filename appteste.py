@@ -504,25 +504,37 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data, modo: str = "Mensal"):
     # Legenda “boquinhas” alinhada com a tabelinha
     # (mesma altura / espaçamento)
     # ============================================
-    x_leg = -0.08   # mais à esquerda -> mais negativo
-    y_leg = y_base + 0.02
+    # Ajuste fino aqui:
+      # Ajuste fino aqui:
+    x_leg = -0.10
+    y_leg = y_base  # mesma altura da primeira linha da tabelinha
+    dy_leg = dy_tab
 
     fig.add_annotation(
         xref="paper", yref="paper",
         x=x_leg, y=y_leg,
-        text=f"<span style='color:{COR_PROC};font-size:16px'>■</span> <span style='color:white;font-size:14px'><b>PROCEDENTE</b></span>",
+        text=(
+            f"<span style='color:{COR_PROC};font-size:16px'>■</span> "
+            "<span style='color:white;font-size:14px'><b>PROCEDENTE</b></span>"
+        ),
         showarrow=False, align="left",
     )
     fig.add_annotation(
         xref="paper", yref="paper",
-        x=x_leg, y=y_leg - dy,
-        text=f"<span style='color:{COR_IMP};font-size:16px'>■</span> <span style='color:white;font-size:14px'><b>IMPROCEDENTE</b></span>",
+        x=x_leg, y=y_leg - dy_leg,
+        text=(
+            f"<span style='color:{COR_IMP};font-size:16px'>■</span> "
+            "<span style='color:white;font-size:14px'><b>IMPROCEDENTE</b></span>"
+        ),
         showarrow=False, align="left",
     )
     fig.add_annotation(
         xref="paper", yref="paper",
-        x=x_leg, y=y_leg - (2 * dy),
-        text="<span style='color:#fcba03;font-size:16px'>■</span> <span style='color:white;font-size:14px'><b>TOTAL</b></span>",
+        x=x_leg, y=y_leg - (2 * dy_leg),
+        text=(
+            "<span style='color:#fcba03;font-size:16px'>■</span> "
+            "<span style='color:white;font-size:14px'><b>TOTAL</b></span>"
+        ),
         showarrow=False, align="left",
     )
 
