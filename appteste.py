@@ -431,8 +431,8 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     # 🟩🟥🟨 LEGENDA (boquinhas) – canto superior esquerdo
     # =====================================================
     x_leg = 0.02
-    y_leg = -0.10
-    dy = 0.060
+    y_leg = -1.0
+    dy = 0.055
 
     fig.add_annotation(
         xref="paper", yref="paper",
