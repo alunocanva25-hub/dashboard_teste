@@ -355,14 +355,14 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
 
     classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
 
-    # Contagem
+    # Contagem bruta
     dados_raw = (
         base.groupby(["MES_NUM", "MÊS", "_CLASSE_"])
         .size()
         .reset_index(name="QTD")
     )
 
-    # Garante 12 meses + todas classes (para não “sumir” mês sem dado)
+    # Garante 12 meses + classes
     meses_df = pd.DataFrame({"MES_NUM": list(range(1, 13))})
     meses_df["MÊS"] = meses_df["MES_NUM"].map(MESES_PT)
 
@@ -382,7 +382,6 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     # Percentuais (labels nas barras)
     # =========================
     total_mes = dados.groupby("MES_NUM")["QTD"].transform("sum")
-    # evita divisão por zero em meses zerados
     dados["PCT"] = ((dados["QTD"] / total_mes.replace(0, 1)) * 100).round(0).astype(int)
 
     dados["LABEL"] = ""
@@ -431,7 +430,7 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     # Remove eixo Y (lado esquerdo)
     fig.update_yaxes(visible=False, showgrid=False, zeroline=False, showticklabels=False, title_text="")
 
-    # Remove legenda padrão do Plotly (vamos usar “boquinhas”)
+    # Remove legenda padrão do Plotly
     fig.update_layout(
         height=520,
         showlegend=False,
@@ -441,62 +440,47 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     )
 
     # =========================
-# "TABELINHA" abaixo de cada mês
-# 3 linhas: Procedente / Improcedente / Total
-# =========================
-def _fmt_int(v: int) -> str:
-    return f"{int(v):,}".replace(",", ".")
+    # "TABELINHA" abaixo de cada mês (3 linhas)
+    # =========================
+    def _fmt_int(v: int) -> str:
+        return f"{int(v):,}".replace(",", ".")
 
-y_base = -0.33   # posição vertical inicial (mais negativo = mais para baixo)
-dy = 0.055       # espaçamento ENTRE as linhas (como você pediu)
+    y_base = -0.33   # mais negativo = mais para baixo
+    dy_tab = 0.055   # espaçamento ENTRE as linhas
 
-for _, r in tab.iterrows():
-    mes = r["MÊS"]
+    for _, r in tab.iterrows():
+        mes = r["MÊS"]
 
-    p = _fmt_int(r["PROCEDENTE"])
-    i = _fmt_int(r["IMPROCEDENTE"])
-    t = _fmt_int(r["TOTAL"])
+        p = _fmt_int(r["PROCEDENTE"])
+        i = _fmt_int(r["IMPROCEDENTE"])
+        t = _fmt_int(r["TOTAL"])
 
-    # PROCEDENTE (verde)
-    fig.add_annotation(
-        x=mes,
-        xref="x",
-        yref="paper",
-        y=y_base,
-        text=f"<span style='font-family:monospace;font-size:14px;color:{COR_PROC};'><b>{p}</b></span>",
-        showarrow=False,
-        align="center",
-    )
-
-    # IMPROCEDENTE (vermelho)
-    fig.add_annotation(
-        x=mes,
-        xref="x",
-        yref="paper",
-        y=y_base - dy,
-        text=f"<span style='font-family:monospace;font-size:14px;color:{COR_IMP};'><b>{i}</b></span>",
-        showarrow=False,
-        align="center",
-    )
-
-    # TOTAL (amarelo)
-    fig.add_annotation(
-        x=mes,
-        xref="x",
-        yref="paper",
-        y=y_base - (2 * dy),
-        text="<span style='font-family:monospace;font-size:14px;color:#fcba03;'><b>{}</b></span>".format(t),
-        showarrow=False,
-        align="center",
-    )
+        fig.add_annotation(
+            x=mes, xref="x",
+            yref="paper", y=y_base,
+            text=f"<span style='font-family:monospace;font-size:14px;color:{COR_PROC};'><b>{p}</b></span>",
+            showarrow=False, align="center",
+        )
+        fig.add_annotation(
+            x=mes, xref="x",
+            yref="paper", y=y_base - dy_tab,
+            text=f"<span style='font-family:monospace;font-size:14px;color:{COR_IMP};'><b>{i}</b></span>",
+            showarrow=False, align="center",
+        )
+        fig.add_annotation(
+            x=mes, xref="x",
+            yref="paper", y=y_base - (2 * dy_tab),
+            text=f"<span style='font-family:monospace;font-size:14px;color:#fcba03;'><b>{t}</b></span>",
+            showarrow=False, align="center",
+        )
 
     # =========================
-    # LEGENDA (boquinhas) alinhada com a tabelinha mensal (mesma “altura”)
+    # LEGENDA (boquinhas) alinhada com a tabelinha mensal
     # =========================
-    # Ajustes finos aqui:
-    x_leg = - 0.10
-    y_leg = - 0.26
-    dy = 0.055
+    # Ajuste fino aqui:
+    x_leg = -0.10
+    y_leg = y_base  # mesma altura da primeira linha da tabelinha
+    dy_leg = dy_tab
 
     fig.add_annotation(
         xref="paper", yref="paper",
@@ -505,30 +489,25 @@ for _, r in tab.iterrows():
             f"<span style='color:{COR_PROC};font-size:16px'>■</span> "
             "<span style='color:white;font-size:14px'><b>PROCEDENTE</b></span>"
         ),
-        showarrow=False,
-        align="left",
+        showarrow=False, align="left",
     )
-
     fig.add_annotation(
         xref="paper", yref="paper",
-        x=x_leg, y=y_leg - dy,
+        x=x_leg, y=y_leg - dy_leg,
         text=(
             f"<span style='color:{COR_IMP};font-size:16px'>■</span> "
             "<span style='color:white;font-size:14px'><b>IMPROCEDENTE</b></span>"
         ),
-        showarrow=False,
-        align="left",
+        showarrow=False, align="left",
     )
-
     fig.add_annotation(
         xref="paper", yref="paper",
-        x=x_leg, y=y_leg - (2 * dy),
+        x=x_leg, y=y_leg - (2 * dy_leg),
         text=(
             "<span style='color:#fcba03;font-size:16px'>■</span> "
             "<span style='color:white;font-size:14px'><b>TOTAL</b></span>"
         ),
-        showarrow=False,
-        align="left",
+        showarrow=False, align="left",
     )
 
     # =========================
@@ -538,9 +517,8 @@ for _, r in tab.iterrows():
     total_geral_fmt = f"{total_geral:,}".replace(",", ".")
 
     fig.add_annotation(
-        xref="paper",
-        yref="paper",
-        x=1.07,          # mais à direita
+        xref="paper", yref="paper",
+        x=1.07,
         y=0.55,
         text=(
             "<span style='font-size:12px;color:#fcba03'><b>TOTAL</b></span><br>"
