@@ -500,7 +500,49 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
             showarrow=False,
             align="center",
         )
+    # =====================================================
+# 🔶 TOTAL GERAL (quadrado à direita)
+# =====================================================
+total_geral_fmt = f"{int(tab['TOTAL'].sum()):,}".replace(",", ".")
 
+fig.add_annotation(
+    xref="paper",
+    yref="paper",
+    x=1.08,          # mais à direita
+    y=0.55,
+    text=(
+        "<span style='font-size:12px;color:#fcba03'><b>TOTAL</b></span><br>"
+        f"<span style='font-size:18px;color:#fcba03'><b>{total_geral_fmt}</b></span>"
+    ),
+    showarrow=False,
+    align="center",
+    bgcolor="rgba(0,0,0,0.45)",
+    bordercolor="#fcba03",
+    borderwidth=1,
+    borderpad=10,
+)
+  # =====================================================
+# 🟩🟥 LEGENDA VISUAL (boquinhas)
+# =====================================================
+fig.add_annotation(
+    xref="paper",
+    yref="paper",
+    x=1.08,
+    y=0.78,
+    text=f"<span style='color:{COR_PROC};font-size:14px'>■</span> <span style='color:white'>Procedente</span>",
+    showarrow=False,
+    align="left"
+)
+
+fig.add_annotation(
+    xref="paper",
+    yref="paper",
+    x=1.08,
+    y=0.72,
+    text=f"<span style='color:{COR_IMP};font-size:14px'>■</span> <span style='color:white'>Improcedente</span>",
+    showarrow=False,
+    align="left"
+)  
     return fig, tabela_final
 
 def resumo_por_localidade_html(df_base, col_local, selecionado, top_n=12):
