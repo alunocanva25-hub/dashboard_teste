@@ -431,7 +431,7 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
 # 🟩🟥🟨 LEGENDA ALINHADA COM A TABELA MENSAL
 # =====================================================
 x_leg = 0.02
-y_leg = -0.36
+y_leg = -0.35
 dy = 0.055
 
 # Procedente
