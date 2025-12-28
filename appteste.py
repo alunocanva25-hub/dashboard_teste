@@ -410,6 +410,38 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data, modo: str = "Mensal"):
     dados.loc[dados["_CLASSE_"] == "PROCEDENTE", "LABEL"] = dados.loc[dados["_CLASSE_"] == "PROCEDENTE", "PCT"].astype(str) + "%"
     dados.loc[dados["_CLASSE_"] == "IMPROCEDENTE", "LABEL"] = dados.loc[dados["_CLASSE_"] == "IMPROCEDENTE", "PCT"].astype(str) + "%"
 
+  # =========================
+# LINHAS-GUIA (estilo tabela)
+# =========================
+y_base = -0.33   # mesma base da tabelinha
+dy = 0.055       # espaçamento entre linhas
+
+# Linha Procedente
+fig.add_shape(
+    type="line",
+    xref="paper", yref="paper",
+    x0=0, x1=1,
+    y0=y_base, y1=y_base,
+    line=dict(color="rgba(255,255,255,0.25)", width=1)
+)
+
+# Linha Improcedente
+fig.add_shape(
+    type="line",
+    xref="paper", yref="paper",
+    x0=0, x1=1,
+    y0=y_base - dy, y1=y_base - dy,
+    line=dict(color="rgba(255,255,255,0.25)", width=1)
+)
+
+# Linha Total
+fig.add_shape(
+    type="line",
+    xref="paper", yref="paper",
+    x0=0, x1=1,
+    y0=y_base - (2 * dy), y1=y_base - (2 * dy),
+    line=dict(color="rgba(255,255,255,0.25)", width=1)
+)
     # ============================================
     # Tabela (valores por período)
     # ============================================
