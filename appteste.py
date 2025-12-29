@@ -183,7 +183,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ======================================================
-# FUNÇÕES
+# FUNÇÕES / CONSTANTES
 # ======================================================
 MESES_PT = {
     1: "JANEIRO", 2: "FEVEREIRO", 3: "MARÇO", 4: "ABRIL",
@@ -197,6 +197,9 @@ COR_IMP  = "#c62828"
 COR_OUT  = "#546e7a"
 
 def achar_coluna(df, palavras):
+    """
+    Encontra a 1ª coluna que contenha qualquer uma das palavras (já em UPPER).
+    """
     for col in df.columns:
         for p in palavras:
             if p in col:
@@ -204,6 +207,9 @@ def achar_coluna(df, palavras):
     return None
 
 def validar_estrutura(df):
+    """
+    Confere se a base tem as colunas mínimas necessárias.
+    """
     obrig = {
         "ESTADO/UF": ["ESTADO", "LOCALIDADE", "UF"],
         "RESULTADO": ["RESULTADO"],
@@ -216,45 +222,85 @@ def validar_estrutura(df):
         st.stop()
 
 def _extrair_sheet_id(url: str):
+    """
+    Extrai ID do Google Sheets: /spreadsheets/d/<ID>
+    """
     m = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", url)
     return m.group(1) if m else None
 
 def _extrair_drive_id(url: str):
+    """
+    Extrai ID do Google Drive:
+    - ...?id=<ID>
+    - /file/d/<ID>
+    """
     m = re.search(r"[?&]id=([a-zA-Z0-9-_]+)", url)
-    if m: return m.group(1)
+    if m:
+        return m.group(1)
     m = re.search(r"/file/d/([a-zA-Z0-9-_]+)", url)
     return m.group(1) if m else None
 
-def _normalizar_para_csv(url: str) -> str:
-    sid = _extrair_sheet_id(url)
-    if sid:
-        return f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid=0"
-    did = _extrair_drive_id(url)
-    if did:
-        return f"https://drive.google.com/uc?id={did}"
-    return url
+def _normalizar_para_xlsx(url_original: str) -> str:
+    """
+    Normaliza um link do Drive/Sheets para baixar em formato XLSX.
 
-@st.cache_data(ttl=600, show_spinner="🔄 Carregando base...")
-def carregar_base(url_original: str) -> pd.DataFrame:
-    url = _normalizar_para_csv(url_original)
-    r = requests.get(url, timeout=45)
+    - Se for Google Sheets: exporta como XLSX
+    - Se for arquivo do Drive: usa link direto (uc?id=)
+    """
+    sid = _extrair_sheet_id(url_original)
+    if sid:
+        # Export do Google Sheets para XLSX
+        return f"https://docs.google.com/spreadsheets/d/{sid}/export?format=xlsx"
+
+    did = _extrair_drive_id(url_original)
+    if did:
+        # Download direto do Drive (arquivo xlsx)
+        return f"https://drive.google.com/uc?id={did}"
+
+    # Se já for link direto, tenta como está
+    return url_original
+
+@st.cache_data(ttl=600, show_spinner="🔄 Carregando base (XLSX)...")
+def carregar_base(url_original: str, sheet_name=None) -> pd.DataFrame:
+    """
+    Carrega base em XLSX diretamente do Google Drive ou Google Sheets (export).
+
+    IMPORTANTE:
+    - Para ler XLSX, o ambiente precisa ter openpyxl instalado.
+      (na maioria dos ambientes Streamlit já vem, mas se der erro, adicione no requirements.txt)
+      openpyxl==3.1.2 (exemplo)
+
+    sheet_name:
+      - None -> primeira aba
+      - "NOME_DA_ABA" -> força uma aba específica
+    """
+    url = _normalizar_para_xlsx(url_original)
+
+    # Faz download do conteúdo (bytes)
+    r = requests.get(url, timeout=60)
     r.raise_for_status()
     raw = r.content
-    head = raw[:400].lstrip().lower()
+
+    # Proteção: se o Drive retornar HTML é permissão/URL errada
+    head = raw[:500].lstrip().lower()
     if head.startswith(b"<!doctype html") or b"<html" in head:
-        raise RuntimeError("URL retornou HTML (não CSV). Verifique permissões do Drive/Sheets.")
-    for enc in ["utf-8-sig", "utf-8", "cp1252", "latin1"]:
-        try:
-            df = pd.read_csv(BytesIO(raw), sep=None, engine="python", encoding=enc)
-            df.columns = df.columns.str.upper().str.strip()
-            return df
-        except UnicodeDecodeError:
-            continue
-    df = pd.read_csv(BytesIO(raw), sep=None, engine="python", encoding="utf-8", encoding_errors="replace")
-    df.columns = df.columns.str.upper().str.strip()
+        raise RuntimeError(
+            "URL retornou HTML (não XLSX). Verifique permissões do Drive/Sheets:\n"
+            "- arquivo como 'Qualquer pessoa com o link'\n"
+            "- link correto do arquivo\n"
+        )
+
+    # Lê o Excel direto da memória (BytesIO)
+    df = pd.read_excel(BytesIO(raw), sheet_name=sheet_name, engine="openpyxl")
+
+    # Padroniza colunas no padrão do projeto
+    df.columns = df.columns.astype(str).str.upper().str.strip()
     return df
 
 def _titulo_plotly(fig, titulo: str, uf: str):
+    """
+    Aplica título padrão em TODOS os gráficos.
+    """
     uf_txt = uf if uf != "TOTAL" else "TODOS"
     fig.update_layout(
         title=f"{titulo} • {uf_txt}",
@@ -264,9 +310,13 @@ def _titulo_plotly(fig, titulo: str, uf: str):
     return fig
 
 def donut_resultado(df_base):
+    """
+    Donut de Procedente x Improcedente (resumo).
+    """
     proc = df_base["_RES_"].str.contains("PROCED", na=False).sum()
     imp  = df_base["_RES_"].str.contains("IMPROCED", na=False).sum()
     dados = pd.DataFrame({"Resultado": ["Procedente", "Improcedente"], "QTD": [proc, imp]})
+
     fig = px.pie(
         dados, names="Resultado", values="QTD", hole=0.62,
         template="plotly_white",
@@ -278,6 +328,9 @@ def donut_resultado(df_base):
     return fig
 
 def barh_contagem(df_base, col_dim, titulo, uf):
+    """
+    Barras horizontais (top/contagem).
+    """
     if col_dim is None or df_base.empty:
         return None
 
@@ -288,7 +341,6 @@ def barh_contagem(df_base, col_dim, titulo, uf):
         .reset_index(name="QTD")
         .sort_values("QTD")
     )
-
     if dados.empty:
         return None
 
@@ -308,19 +360,15 @@ def barh_contagem(df_base, col_dim, titulo, uf):
         height=300,
         margin=dict(l=10, r=10, t=70, b=10),
         showlegend=False,
-        
     )
-    # 🔥 Oculta eixo X (escala) — mantém apenas os valores nas barras
+
+    # Oculta eixo X (escala) — mantém apenas os valores nas barras
     fig.update_xaxes(visible=False, showticklabels=False, ticks="", showgrid=False, zeroline=False)
 
-    fig.update_traces(
-        textposition="outside",
-        cliponaxis=False
-    )
-
+    fig.update_traces(textposition="outside", cliponaxis=False)
     fig.update_yaxes(title_text="")
 
-    # ✅ TOTAL DO GRÁFICO (único)
+    # Total do gráfico
     fig.add_annotation(
         xref="paper",
         yref="paper",
@@ -328,18 +376,19 @@ def barh_contagem(df_base, col_dim, titulo, uf):
         y=1.12,
         text=f"TOTAL: {total_fmt}",
         showarrow=False,
-        font=dict(
-            size=13,
-            color="#fcba03",
-            family="Arial Black"
-        ),
+        font=dict(size=13, color="#fcba03", family="Arial Black"),
         align="right"
     )
 
     return _titulo_plotly(fig, titulo, uf)
 
-
 def acumulado_mensal_fig_e_tabela(df_base, col_data):
+    """
+    Gráfico mensal empilhado (Procedente/Improcedente/Outros)
+    + “tabelinha” embaixo por mês
+    + legenda “boquinhas” alinhada com a tabelinha
+    + bloco à direita com TOTAL / PROCEDENTE / IMPROCEDENTE
+    """
     base = df_base.dropna(subset=[col_data]).copy()
     if base.empty:
         return None, None
@@ -445,7 +494,7 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     fig.update_layout(
         height=520,
         showlegend=False,  # vamos usar “boquinhas”
-        margin=dict(l=120, r=140, t=50, b=190),
+        margin=dict(l=120, r=160, t=50, b=190),
         xaxis_title="",
         yaxis_title="",
     )
@@ -457,28 +506,16 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
         return f"{int(v):,}".replace(",", ".")
 
     y_base = -0.23     # mais negativo = mais para baixo
-    dy = 0.055         # espaçamento ENTRE as linhas (como você pediu)
+    dy = 0.055         # espaçamento ENTRE as linhas
 
     # =====================================================
     # LINHAS-GUIA (estilo tabela) — 3 linhas horizontais
     # =====================================================
     line_style = dict(color="rgba(255,255,255,0.25)", width=1)
 
-    fig.add_shape(
-        type="line", xref="paper", yref="paper",
-        x0=0, x1=1, y0=y_base, y1=y_base,
-        line=line_style
-    )
-    fig.add_shape(
-        type="line", xref="paper", yref="paper",
-        x0=0, x1=1, y0=y_base - dy, y1=y_base - dy,
-        line=line_style
-    )
-    fig.add_shape(
-        type="line", xref="paper", yref="paper",
-        x0=0, x1=1, y0=y_base - (2 * dy), y1=y_base - (2 * dy),
-        line=line_style
-    )
+    fig.add_shape(type="line", xref="paper", yref="paper", x0=0, x1=1, y0=y_base, y1=y_base, line=line_style)
+    fig.add_shape(type="line", xref="paper", yref="paper", x0=0, x1=1, y0=y_base - dy, y1=y_base - dy, line=line_style)
+    fig.add_shape(type="line", xref="paper", yref="paper", x0=0, x1=1, y0=y_base - (2 * dy), y1=y_base - (2 * dy), line=line_style)
 
     # =====================================================
     # “TABELINHA” abaixo de cada mês (só números, cores)
@@ -489,76 +526,54 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
         i = _fmt_int(r["IMPROCEDENTE"])
         t = _fmt_int(r["TOTAL"])
 
-        # Procedente (verde)
         fig.add_annotation(
             x=mes, xref="x",
             yref="paper", y=y_base,
             text=f"<span style='font-family:monospace;font-size:14px;color:{COR_PROC};'><b>{p}</b></span>",
-            showarrow=False,
-            align="center",
+            showarrow=False, align="center",
         )
-
-        # Improcedente (vermelho)
         fig.add_annotation(
             x=mes, xref="x",
             yref="paper", y=y_base - dy,
             text=f"<span style='font-family:monospace;font-size:14px;color:{COR_IMP};'><b>{i}</b></span>",
-            showarrow=False,
-            align="center",
+            showarrow=False, align="center",
         )
-
-        # Total (amarelo)
         fig.add_annotation(
             x=mes, xref="x",
             yref="paper", y=y_base - (2 * dy),
             text=f"<span style='font-family:monospace;font-size:14px;color:#fcba03;'><b>{t}</b></span>",
-            showarrow=False,
-            align="center",
+            showarrow=False, align="center",
         )
 
     # =====================================================
     # LEGENDA “boquinhas” (alinhada com a tabelinha)
-    # -> fica na mesma altura das 3 linhas, à esquerda da 1ª coluna
+    # -> Ajuste fino: mexa em x_leg e y_leg se quiser subir/baixar
     # =====================================================
     x_leg = -0.08                 # mais negativo = mais à esquerda
     y_leg = y_base - 0.001        # alinhamento fino com a 1ª linha (verde)
 
     fig.add_annotation(
-        xref="paper", yref="paper",
-        x=x_leg, y=y_leg,
-        text=(
-            f"<span style='color:{COR_PROC};font-size:16px'>■</span> "
-            "<span style='color:white;font-size:14px'><b>PROCEDENTE</b></span>"
-        ),
-        showarrow=False,
-        align="left",
+        xref="paper", yref="paper", x=x_leg, y=y_leg,
+        text=(f"<span style='color:{COR_PROC};font-size:16px'>■</span> "
+              "<span style='color:white;font-size:14px'><b>PROCEDENTE</b></span>"),
+        showarrow=False, align="left",
     )
-
     fig.add_annotation(
-        xref="paper", yref="paper",
-        x=x_leg, y=y_leg - dy,
-        text=(
-            f"<span style='color:{COR_IMP};font-size:16px'>■</span> "
-            "<span style='color:white;font-size:14px'><b>IMPROCEDENTE</b></span>"
-        ),
-        showarrow=False,
-        align="left",
+        xref="paper", yref="paper", x=x_leg, y=y_leg - dy,
+        text=(f"<span style='color:{COR_IMP};font-size:16px'>■</span> "
+              "<span style='color:white;font-size:14px'><b>IMPROCEDENTE</b></span>"),
+        showarrow=False, align="left",
     )
-
     fig.add_annotation(
-        xref="paper", yref="paper",
-        x=x_leg, y=y_leg - (2 * dy),
-        text=(
-            "<span style='color:#fcba03;font-size:16px'>■</span> "
-            "<span style='color:white;font-size:14px'><b>TOTAL</b></span>"
-        ),
-        showarrow=False,
-        align="left",
+        xref="paper", yref="paper", x=x_leg, y=y_leg - (2 * dy),
+        text=("<span style='color:#fcba03;font-size:16px'>■</span> "
+              "<span style='color:white;font-size:14px'><b>TOTAL</b></span>"),
+        showarrow=False, align="left",
     )
 
-    # =========================
-    # TOTAL GERAL (quadrado à direita) - 3 linhas (TOTAL / PROCEDENTE / IMPROCEDENTE)
-    # =========================
+    # =====================================================
+    # BLOCO À DIREITA: TOTAL / PROCEDENTE / IMPROCEDENTE
+    # =====================================================
     total_geral = int(tab["TOTAL"].sum())
     total_proc  = int(tab["PROCEDENTE"].sum())
     total_imp   = int(tab["IMPROCEDENTE"].sum())
@@ -568,23 +583,19 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     total_imp_fmt   = f"{total_imp:,}".replace(",", ".")
 
     fig.add_annotation(
-        xref="paper",
-        yref="paper",
-        x=1.10,           # ➡️ mais pra direita / esquerda
-        y=0.55,           # ⬆️ sobe / desce o bloco inteiro
+        xref="paper", yref="paper",
+        x=1.10,   # ➡️ mais pra direita / esquerda
+        y=0.55,   # ⬆️ sobe / desce o bloco inteiro
         text=(
-            # TOTAL
             "<span style='font-size:12px;color:#fcba03'><b>TOTAL</b></span><br>"
             f"<span style='font-size:18px;color:#fcba03'><b>{total_geral_fmt}</b></span><br><br>"
-            # PROCEDENTE
             f"<span style='font-size:12px;color:{COR_PROC}'><b>PROCEDENTE</b></span><br>"
             f"<span style='font-size:16px;color:{COR_PROC}'><b>{total_proc_fmt}</b></span><br><br>"
-            # IMPROCEDENTE
             f"<span style='font-size:12px;color:{COR_IMP}'><b>IMPROCEDENTE</b></span><br>"
             f"<span style='font-size:16px;color:{COR_IMP}'><b>{total_imp_fmt}</b></span>"
         ),
         showarrow=False,
-        align="left",     # deixa como “coluna” alinhada
+        align="left",
         bgcolor="rgba(0,0,0,0.45)",
         bordercolor="#fcba03",
         borderwidth=1,
@@ -594,6 +605,9 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     return fig, tabela_final
 
 def resumo_por_localidade_html(df_base, col_local, selecionado, top_n=12):
+    """
+    Renderiza listagem HTML (notas por localidade).
+    """
     if col_local is None or df_base.empty:
         return ""
     s = df_base[col_local].dropna().astype(str).str.upper()
@@ -603,6 +617,7 @@ def resumo_por_localidade_html(df_base, col_local, selecionado, top_n=12):
         outros = int(vc.iloc[top_n:]["QTD"].sum())
         vc = vc.iloc[:top_n].copy()
         vc.loc[len(vc)] = ["OUTROS", outros]
+
     linhas = []
     sel = str(selecionado).upper()
     for _, r in vc.iterrows():
@@ -613,6 +628,7 @@ def resumo_por_localidade_html(df_base, col_local, selecionado, top_n=12):
         qtd_fmt = f"{qtd:,}".replace(",", ".")
         linhas.append(f'<div class="{cls}"><span>{loc}</span><span>{qtd_fmt}</span></div>')
     return "\n".join(linhas)
+
 # ======================================================
 # BOTÃO ATUALIZAR BASE
 # ======================================================
@@ -625,10 +641,12 @@ with colB:
     st.caption("Use quando atualizar o arquivo no Drive/Sheets.")
 
 # ======================================================
-# CARREGAMENTO
+# CARREGAMENTO (XLSX)
+# - Mantenha o mesmo link do Drive
+# - Se for Google Sheets, também funciona
 # ======================================================
-URL_BASE = "https://drive.google.com/uc?id=1nmRToRyJM2PgjSS8GHe9sn_vm_UJcp6n"
-df = carregar_base(URL_BASE)
+URL_BASE = "https://drive.google.com/uc?id=1VadynN01W4mNRLfq8ABZAaQP8Sfim5tb"
+df = carregar_base(URL_BASE)  # se precisar de aba: carregar_base(URL_BASE, sheet_name="BASE")
 validar_estrutura(df)
 
 COL_ESTADO    = achar_coluna(df, ["ESTADO", "LOCALIDADE", "UF"])
@@ -638,10 +656,10 @@ COL_MOTIVO    = achar_coluna(df, ["MOTIVO"])
 COL_REGIONAL  = achar_coluna(df, ["REGIONAL"])
 COL_DATA      = achar_coluna(df, ["DATA"])
 
+# Converte DATA (caso venha texto ou excel-date)
 df[COL_DATA] = pd.to_datetime(df[COL_DATA], errors="coerce", dayfirst=True)
 df["_TIPO_"] = df[COL_TIPO].astype(str).str.upper().str.strip()
 df["_RES_"]  = df[COL_RESULTADO].astype(str).str.upper().str.strip()
-
 
 # ======================================================
 # SELETORES (Ano • Mensal/Semanal • Calendário • Semana)
@@ -649,7 +667,6 @@ df["_RES_"]  = df[COL_RESULTADO].astype(str).str.upper().str.strip()
 # ======================================================
 from datetime import date
 
-# anos disponíveis na base
 anos_disponiveis = sorted(df[COL_DATA].dropna().dt.year.unique().astype(int).tolist())
 ano_padrao = anos_disponiveis[-1] if anos_disponiveis else None
 
@@ -673,7 +690,7 @@ with c_sel2:
         key="modo_periodo",
     )
 
-# base filtrada por ano (para calcular datas/semana)
+# base filtrada por ano
 df_ano = df if ano_sel is None else df[df[COL_DATA].dt.year == int(ano_sel)].copy()
 ano_txt = str(ano_sel) if ano_sel else "—"
 
@@ -694,7 +711,6 @@ with c_sel3:
         key="range_calendario",
     )
 
-# seletor de semana (só no modo semanal)
 with c_sel4:
     semana_sel = None
     if modo_periodo == "Semanal" and not df_ano.empty:
@@ -702,7 +718,7 @@ with c_sel4:
         opcoes_sem = ["Todas"] + [f"S{w:02d}" for w in semanas_disp]
         semana_sel = st.selectbox("Semana (S01..S53)", opcoes_sem, index=0, key="semana_sel")
 
-# aplicar filtro semanal (se selecionada) – semana ISO, seg(1) a sex(5)
+# aplica semana ISO (seg a sex)
 if modo_periodo == "Semanal" and semana_sel and semana_sel != "Todas" and ano_sel is not None:
     w = int(str(semana_sel).replace("S", ""))
     try:
@@ -712,13 +728,12 @@ if modo_periodo == "Semanal" and semana_sel and semana_sel != "Todas" and ano_se
     except ValueError:
         st.warning("Semana inválida para este ano (ISO). Usando o filtro por calendário.")
 
-# aplicar filtro por calendário (inclusive)
+# aplica filtro calendário
 df_periodo = df_ano.copy()
 if not df_periodo.empty and df_periodo[COL_DATA].notna().any():
     _dini = pd.to_datetime(data_ini)
     _dfim = pd.to_datetime(data_fim) + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
     df_periodo = df_periodo[(df_periodo[COL_DATA] >= _dini) & (df_periodo[COL_DATA] <= _dfim)].copy()
-
 
 # ======================================================
 # "ABAS" UF
@@ -740,10 +755,14 @@ df_as = df_filtro[df_filtro["_TIPO_"].str.contains("AS", na=False)]
 row1 = st.columns([1.09, 1.15, 1.15], gap="large")
 
 with row1[0]:
-    total = len(df_filtro); am = len(df_am); az = len(df_as)
+    total = len(df_filtro)
+    am = len(df_am)
+    az = len(df_as)
+
     total_fmt = f"{total:,}".replace(",", ".")
     am_fmt    = f"{am:,}".replace(",", ".")
     as_fmt    = f"{az:,}".replace(",", ".")
+
     st.markdown(
         f"""
         <div class="card">
@@ -848,16 +867,23 @@ else:
 st.markdown("</div>", unsafe_allow_html=True)
 
 def gerar_pdf(df_tabela, ano_ref, uf_sel):
+    """
+    Gera um PDF simples com o resumo mensal.
+    """
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
     styles = getSampleStyleSheet()
     elementos = []
+
     elementos.append(Paragraph(f"<b>DASHBOARD NOTAS AM x AS – {ano_ref}</b>", styles["Title"]))
     elementos.append(Spacer(1, 12))
     elementos.append(Paragraph(f"<b>UF selecionada:</b> {uf_sel}", styles["Normal"]))
     elementos.append(Spacer(1, 12))
 
-    total = len(df_filtro); am = len(df_am); az = len(df_as)
+    total = len(df_filtro)
+    am = len(df_am)
+    az = len(df_as)
+
     elementos.append(Paragraph(
         f"<b>Total de Notas:</b> {total}<br/>"
         f"<b>AM:</b> {am} &nbsp;&nbsp; <b>AS:</b> {az}",
