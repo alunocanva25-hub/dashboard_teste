@@ -570,7 +570,7 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     fig.add_annotation(
         xref="paper",
         yref="paper",
-        x=1.17,           # ➡️ mais pra direita / esquerda
+        x=1.10,           # ➡️ mais pra direita / esquerda
         y=0.55,           # ⬆️ sobe / desce o bloco inteiro
         text=(
             # TOTAL
