@@ -568,28 +568,28 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     total_imp_fmt   = f"{total_imp:,}".replace(",", ".")
 
     fig.add_annotation(
-    xref="paper",
-    yref="paper",
-    x=1.07,           # ➡️ mais pra direita / esquerda
-    y=0.55,           # ⬆️ sobe / desce o bloco inteiro
-    text=(
-        # TOTAL
-        "<span style='font-size:12px;color:#fcba03'><b>TOTAL</b></span><br>"
-        f"<span style='font-size:18px;color:#fcba03'><b>{total_geral_fmt}</b></span><br><br>"
-        # PROCEDENTE
-        f"<span style='font-size:12px;color:{COR_PROC}'><b>PROCEDENTE</b></span><br>"
-        f"<span style='font-size:16px;color:{COR_PROC}'><b>{total_proc_fmt}</b></span><br><br>"
-        # IMPROCEDENTE
-        f"<span style='font-size:12px;color:{COR_IMP}'><b>IMPROCEDENTE</b></span><br>"
-        f"<span style='font-size:16px;color:{COR_IMP}'><b>{total_imp_fmt}</b></span>"
-    ),
-    showarrow=False,
-    align="left",     # deixa como “coluna” alinhada
-    bgcolor="rgba(0,0,0,0.45)",
-    bordercolor="#fcba03",
-    borderwidth=1,
-    borderpad=10,
-)
+        xref="paper",
+        yref="paper",
+        x=1.07,           # ➡️ mais pra direita / esquerda
+        y=0.55,           # ⬆️ sobe / desce o bloco inteiro
+        text=(
+            # TOTAL
+            "<span style='font-size:12px;color:#fcba03'><b>TOTAL</b></span><br>"
+            f"<span style='font-size:18px;color:#fcba03'><b>{total_geral_fmt}</b></span><br><br>"
+            # PROCEDENTE
+            f"<span style='font-size:12px;color:{COR_PROC}'><b>PROCEDENTE</b></span><br>"
+            f"<span style='font-size:16px;color:{COR_PROC}'><b>{total_proc_fmt}</b></span><br><br>"
+            # IMPROCEDENTE
+            f"<span style='font-size:12px;color:{COR_IMP}'><b>IMPROCEDENTE</b></span><br>"
+            f"<span style='font-size:16px;color:{COR_IMP}'><b>{total_imp_fmt}</b></span>"
+        ),
+        showarrow=False,
+        align="left",     # deixa como “coluna” alinhada
+        bgcolor="rgba(0,0,0,0.45)",
+        bordercolor="#fcba03",
+        borderwidth=1,
+        borderpad=10,
+    )
 
     return fig, tabela_final
 
