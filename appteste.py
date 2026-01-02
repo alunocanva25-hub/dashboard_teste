@@ -8,21 +8,22 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib import colors
 import streamlit.components.v1 as components
-from datetime import date
+from datetime import date, timedelta
 
 # ======================================================
 # CONFIG
 # ======================================================
-st.set_page_config(page_title="Dashboard Notas – AM x AS", layout="wide")
+st.set_page_config(page_title="TORPEDO SEMANAL – Produtividade", layout="wide")
 
 # ======================================================
-# CSS (visual do dashboard + organização)
+# CSS (mesmo padrão visual do seu projeto)
 # ======================================================
 st.markdown("""
 <style>
 .stApp { background: #6fa6d6; }
 .block-container{ padding-top: 0.6rem; max-width: 1500px; }
 
+/* Cards */
 .card{
   background: #b9d3ee;
   border: 2px solid rgba(10,40,70,0.30);
@@ -42,6 +43,7 @@ st.markdown("""
   text-align: center;
 }
 
+/* KPI */
 .kpi-row{
   display:flex;
   justify-content:space-between;
@@ -64,6 +66,7 @@ st.markdown("""
   font-weight:950; color:#9b0d0d; font-size:26px; line-height: 1.0;
 }
 
+/* Topbar */
 .topbar{
   background: rgba(255,255,255,0.35);
   border: 2px solid rgba(10,40,70,0.22);
@@ -92,6 +95,7 @@ st.markdown("""
 }
 .right-note small{ font-weight:800; opacity:.9; font-size:12px; }
 
+/* Botões */
 div.stButton > button{
   border-radius: 10px;
   font-weight: 900;
@@ -105,7 +109,7 @@ div.stButton > button:hover{
   border-color: rgba(10,40,70,0.35);
 }
 
-/* Segmented control (aba ativa com cor diferente) */
+/* Segmented */
 div[data-baseweb="segmented-control"]{
   background: rgba(255,255,255,0.35);
   border: 2px solid rgba(10,40,70,0.22);
@@ -124,39 +128,103 @@ div[data-baseweb="segmented-control"] div[aria-checked="true"] span{
   color: #ffffff !important;
 }
 
-/* Lista (notas por localidade) */
-.loc-row{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  padding:6px 8px;
-  border-radius:10px;
-  margin-bottom:6px;
-  border:1px solid rgba(10,40,70,0.22);
+/* Tabelas estilo torpedo */
+.tblwrap{
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(10,40,70,0.25);
   background: rgba(255,255,255,0.35);
+}
+.tblhead{
+  padding: 8px 10px;
+  font-weight: 950;
+  color: white;
+  text-align: left;
+}
+.head-blue{ background:#1F77B4; }
+.head-green{ background:#2CA02C; }
+.head-yellow{ background:#F1C40F; color:#1b1b1b; }
+
+.tbl{
+  width: 100%;
+  border-collapse: collapse;
+}
+.tbl td{
+  border-top: 1px solid rgba(10,40,70,0.18);
+  padding: 8px 10px;
+  font-size: 13px;
   color:#0b2b45;
   font-weight: 900;
 }
-.loc-row.active{
-  background:#0b2b45;
-  color:#ffffff;
+.col-date{ width: 120px; }
+.col-dow{ width: 62px; text-align:center; }
+
+/* LOGIN central */
+.login-wrap{
+  min-height: 100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.login-card{
+  width: min(430px, 92vw);
+  background: rgba(255,255,255,0.55);
+  border: 2px solid rgba(10,40,70,0.22);
+  border-radius: 18px;
+  box-shadow: 0 10px 18px rgba(0,0,0,0.18);
+  padding: 18px 16px;
+}
+.login-title{
+  font-weight: 950;
+  color:#0b2b45;
+  font-size: 18px;
+  text-align:center;
+  margin-bottom: 4px;
+}
+.login-sub{
+  font-weight: 800;
+  color:#0b2b45;
+  opacity:.85;
+  font-size: 12px;
+  text-align:center;
+  margin-bottom: 12px;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ======================================================
-# LOGIN
+# LOGIN (centralizado)
 # ======================================================
 def tela_login():
-    st.markdown("## 🔐 Acesso Restrito")
-    usuario = st.text_input("Usuário")
-    senha = st.text_input("Senha", type="password")
-    if st.button("Entrar"):
+    st.markdown("""
+    <div class="login-wrap">
+      <div class="login-card">
+        <div class="login-title">🔐 Acesso Restrito</div>
+        <div class="login-sub">Informe suas credenciais para continuar</div>
+    """, unsafe_allow_html=True)
+
+    usuario = st.text_input("Usuário", key="login_usuario")
+    senha = st.text_input("Senha", type="password", key="login_senha")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        entrar = st.button("Entrar", use_container_width=True)
+    with c2:
+        limpar = st.button("Limpar", use_container_width=True)
+
+    if limpar:
+        st.session_state["login_usuario"] = ""
+        st.session_state["login_senha"] = ""
+        st.rerun()
+
+    if entrar:
         if usuario == st.secrets["auth"]["usuario"] and senha == st.secrets["auth"]["senha"]:
             st.session_state["logado"] = True
             st.rerun()
         else:
             st.error("Usuário ou senha inválidos")
+
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
@@ -172,58 +240,21 @@ st.markdown("""
   <div class="brand">
     <div class="brand-badge">3C</div>
     <div class="brand-text">
-      <div class="t1">DASHBOARD NOTAS – AM x AS</div>
-      <div class="t2">Visão gerencial no padrão do painel de referência</div>
+      <div class="t1">TORPEDO SEMANAL – PRODUTIVIDADE</div>
+      <div class="t2">Gráfico por colaborador + 3 tabelas (seg–sex) no padrão da referência</div>
     </div>
   </div>
   <div class="right-note">
-    FUNÇÃO MEDIÇÃO<br>
-    <small>NOTAS AM – ANÁLISE DE MEDIÇÃO<br>NOTAS AS – AUDITORIA DE SERVIÇO</small>
+    BASE DRIVE (XLSX)<br>
+    <small>Colab = H • Notas = B • Tipo = C • Localidade = D</small>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
 # ======================================================
-# CONSTANTES / CORES
+# HELPERS (Drive XLSX/CSV)
 # ======================================================
-MESES_PT = {
-    1: "JANEIRO", 2: "FEVEREIRO", 3: "MARÇO", 4: "ABRIL",
-    5: "MAIO", 6: "JUNHO", 7: "JULHO", 8: "AGOSTO",
-    9: "SETEMBRO", 10: "OUTUBRO", 11: "NOVEMBRO", 12: "DEZEMBRO"
-}
-MESES_ORDEM = [MESES_PT[i] for i in range(1, 13)]
-
-COR_PROC = "#2e7d32"
-COR_IMP  = "#c62828"
-COR_OUT  = "#546e7a"
-COR_TOT  = "#fcba03"
-
-# ======================================================
-# HELPERS (colunas / validação)
-# ======================================================
-def achar_coluna(df, palavras):
-    for col in df.columns:
-        for p in palavras:
-            if p in col:
-                return col
-    return None
-
-def validar_estrutura(df):
-    obrig = {
-        "ESTADO/UF": ["ESTADO", "LOCALIDADE", "UF"],
-        "RESULTADO": ["RESULTADO"],
-        "TIPO": ["TIPO"],
-        "DATA": ["DATA"],
-    }
-    faltando = [nome for nome, alts in obrig.items() if not achar_coluna(df, alts)]
-    if faltando:
-        st.error("Estrutura da base incompatível. Faltando: " + ", ".join(faltando))
-        st.stop()
-
 def _extrair_drive_id(url: str):
-    # formatos comuns de links do Drive:
-    # https://drive.google.com/uc?id=FILEID
-    # https://drive.google.com/file/d/FILEID/view?usp=sharing
     m = re.search(r"[?&]id=([a-zA-Z0-9-_]+)", url)
     if m:
         return m.group(1)
@@ -233,11 +264,6 @@ def _extrair_drive_id(url: str):
     return None
 
 def _drive_direct_download(url: str) -> str:
-    """
-    Converte link do Google Drive para link de download direto.
-    - Se já for uc?id=... mantém.
-    - Se for /file/d/... converte para uc?id=...
-    """
     did = _extrair_drive_id(url)
     if did:
         return f"https://drive.google.com/uc?id={did}"
@@ -248,19 +274,11 @@ def _bytes_is_html(raw: bytes) -> bool:
     return head.startswith(b"<!doctype html") or b"<html" in head
 
 def _bytes_is_xlsx(raw: bytes) -> bool:
-    # XLSX é um ZIP: começa com "PK"
     return raw[:2] == b"PK"
 
 @st.cache_data(ttl=600, show_spinner="🔄 Carregando base (XLSX/CSV)...")
 def carregar_base(url_original: str) -> pd.DataFrame:
-    """
-    Carrega base do Google Drive (preferencialmente XLSX).
-    - Se a resposta vier como XLSX, lê via pd.read_excel(engine='openpyxl')
-    - Se vier como CSV, lê via pd.read_csv com detecção de encoding
-    - Se vier HTML, mostra erro de permissão/link
-    """
     url = _drive_direct_download(url_original)
-
     r = requests.get(url, timeout=60)
     r.raise_for_status()
     raw = r.content
@@ -268,362 +286,63 @@ def carregar_base(url_original: str) -> pd.DataFrame:
     if _bytes_is_html(raw):
         raise RuntimeError("URL retornou HTML (provável permissão/link). No Drive: 'Qualquer pessoa com o link' (Visualizador).")
 
-    # ✅ Preferência: XLSX
     if _bytes_is_xlsx(raw):
-        # Se quiser escolher aba, troque sheet_name (ex.: 0 ou "Plan1")
         df = pd.read_excel(BytesIO(raw), sheet_name=0, engine="openpyxl")
-        df.columns = df.columns.astype(str).str.upper().str.strip()
+        # NÃO normalizo colunas por nome aqui, pois vamos usar por posição
         return df
 
-    # fallback: CSV
     for enc in ["utf-8-sig", "utf-8", "cp1252", "latin1"]:
         try:
             df = pd.read_csv(BytesIO(raw), sep=None, engine="python", encoding=enc)
-            df.columns = df.columns.astype(str).str.upper().str.strip()
             return df
         except UnicodeDecodeError:
             continue
 
     df = pd.read_csv(BytesIO(raw), sep=None, engine="python", encoding="utf-8", encoding_errors="replace")
-    df.columns = df.columns.astype(str).str.upper().str.strip()
     return df
 
-def _titulo_plotly(fig, titulo: str, uf: str):
-    uf_txt = uf if uf != "TOTAL" else "TODOS"
-    fig.update_layout(
-        title=f"{titulo} • {uf_txt}",
-        title_x=0.0,
-        title_font=dict(size=14, color="#FFFFFF", family="Arial Black")
-    )
-    return fig
+def validar_estrutura_posicional(df: pd.DataFrame):
+    if df is None or df.empty:
+        st.error("Base vazia.")
+        st.stop()
+    if len(df.columns) < 8:
+        st.error("A base precisa ter pelo menos até a coluna H (8 colunas).")
+        st.stop()
 
-# ======================================================
-# GRÁFICOS AUXILIARES
-# ======================================================
-def donut_resultado(df_base):
-    proc = df_base["_RES_"].str.contains("PROCED", na=False).sum()
-    imp  = df_base["_RES_"].str.contains("IMPROCED", na=False).sum()
-    dados = pd.DataFrame({"Resultado": ["Procedente", "Improcedente"], "QTD": [proc, imp]})
-    fig = px.pie(
-        dados, names="Resultado", values="QTD", hole=0.62,
-        template="plotly_white",
-        color="Resultado",
-        color_discrete_map={"Procedente": COR_PROC, "Improcedente": COR_IMP}
-    )
-    fig.update_layout(height=260, margin=dict(l=10, r=10, t=60, b=10), legend_title_text="")
-    fig.update_traces(textinfo="percent+value")
-    return fig
+DOW_PT = {0: "SEG", 1: "TER", 2: "QUA", 3: "QUI", 4: "SEX", 5: "SÁB", 6: "DOM"}
 
-def barh_contagem(df_base, col_dim, titulo, uf):
-    if col_dim is None or df_base.empty:
-        return None
+def monday_of_week(d: date) -> date:
+    return d - timedelta(days=d.weekday())
 
-    dados = (
-        df_base
-        .groupby(col_dim)
-        .size()
-        .reset_index(name="QTD")
-        .sort_values("QTD")
-    )
-
-    if dados.empty:
-        return None
-
-    total = int(dados["QTD"].sum())
-    total_fmt = f"{total:,}".replace(",", ".")
-
-    fig = px.bar(
-        dados,
-        x="QTD",
-        y=col_dim,
-        orientation="h",
-        text="QTD",
-        template="plotly_white"
-    )
-
-    fig.update_layout(
-        height=300,
-        margin=dict(l=10, r=10, t=70, b=10),
-        showlegend=False,
-    )
-
-    # 🔥 Oculta eixo X (escala) — mantém apenas os valores nas barras
-    fig.update_xaxes(visible=False, showticklabels=False, ticks="", showgrid=False, zeroline=False)
-
-    fig.update_traces(textposition="outside", cliponaxis=False)
-    fig.update_yaxes(title_text="")
-
-    # ✅ TOTAL DO GRÁFICO (único)
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=0.98, y=1.12,
-        text=f"TOTAL: {total_fmt}",
-        showarrow=False,
-        font=dict(size=13, color=COR_TOT, family="Arial Black"),
-        align="right"
-    )
-
-    return _titulo_plotly(fig, titulo, uf)
-
-# ======================================================
-# ACUMULADO MENSAL (gráfico + tabelinha + boquinhas + total direito)
-# ======================================================
-def acumulado_mensal_fig_e_tabela(df_base, col_data):
-    base = df_base.dropna(subset=[col_data]).copy()
-    if base.empty:
-        return None, None
-
-    # =========================
-    # Preparação dos dados
-    # =========================
-    base["MES_NUM"] = base[col_data].dt.month
-    base["MÊS"] = base["MES_NUM"].map(MESES_PT)
-
-    base["_CLASSE_"] = "OUTROS"
-    base.loc[base["_RES_"].str.contains("PROCED", na=False), "_CLASSE_"] = "PROCEDENTE"
-    base.loc[base["_RES_"].str.contains("IMPROCED", na=False), "_CLASSE_"] = "IMPROCEDENTE"
-
-    classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
-
-    # =========================
-    # Contagem bruta por mês/classe
-    # =========================
-    dados_raw = (
-        base.groupby(["MES_NUM", "MÊS", "_CLASSE_"])
-        .size()
-        .reset_index(name="QTD")
-    )
-
-    # =========================
-    # Garante 12 meses + todas classes (para não “sumir” mês sem dado)
-    # =========================
-    meses_df = pd.DataFrame({"MES_NUM": list(range(1, 13))})
-    meses_df["MÊS"] = meses_df["MES_NUM"].map(MESES_PT)
-
-    grid = (
-        meses_df.assign(_k=1)
-        .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
-        .drop(columns="_k")
-    )
-
-    dados = (
-        grid.merge(dados_raw, on=["MES_NUM", "MÊS", "_CLASSE_"], how="left")
-        .fillna({"QTD": 0})
-    )
-    dados["QTD"] = dados["QTD"].astype(int)
-
-    # =========================
-    # Percentuais (labels nas barras)
-    # =========================
-    total_mes = dados.groupby("MES_NUM")["QTD"].transform("sum")
-    denom = total_mes.replace(0, 1)  # evita divisão por zero em meses zerados
-    dados["PCT"] = ((dados["QTD"] / denom) * 100).round(0).astype(int)
-
-    dados["LABEL"] = ""
-    mask_p = dados["_CLASSE_"] == "PROCEDENTE"
-    mask_i = dados["_CLASSE_"] == "IMPROCEDENTE"
-    dados.loc[mask_p, "LABEL"] = dados.loc[mask_p, "PCT"].astype(str) + "%"
-    dados.loc[mask_i, "LABEL"] = dados.loc[mask_i, "PCT"].astype(str) + "%"
-
-    # =========================
-    # Tabela (valores por mês)
-    # =========================
-    tab = (
-        dados.pivot_table(
-            index=["MES_NUM", "MÊS"],
-            columns="_CLASSE_",
-            values="QTD",
-            aggfunc="sum",
-            fill_value=0
-        )
-        .reset_index()
-        .sort_values("MES_NUM")
-    )
-
-    for c in classes:
-        if c not in tab.columns:
-            tab[c] = 0
-
-    tab["TOTAL"] = tab["PROCEDENTE"] + tab["IMPROCEDENTE"] + tab["OUTROS"]
-    tabela_final = tab[["MÊS", "IMPROCEDENTE", "PROCEDENTE", "TOTAL"]].copy()
-
-    # =========================
-    # Gráfico principal (barras)
-    # =========================
-    fig = px.bar(
-        dados.sort_values("MES_NUM"),
-        x="MÊS",
-        y="QTD",
-        color="_CLASSE_",
-        barmode="stack",
-        text="LABEL",
-        category_orders={
-            "MÊS": MESES_ORDEM,
-            "_CLASSE_": ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"],
-        },
-        color_discrete_map={
-            "PROCEDENTE": COR_PROC,
-            "IMPROCEDENTE": COR_IMP,
-            "OUTROS": COR_OUT,
-        },
-        template="plotly_dark",
-    )
-
-    fig.update_traces(textposition="outside", cliponaxis=False)
-
-    # 🔥 Remove eixo Y (lado esquerdo)
-    fig.update_yaxes(visible=False, showgrid=False, zeroline=False, showticklabels=False, title_text="")
-
-    # =========================
-    # Layout (b grande para caber a “tabelinha”)
-    # =========================
-    fig.update_layout(
-        height=520,
-        showlegend=False,  # vamos usar “boquinhas”
-        margin=dict(l=120, r=170, t=50, b=190),
-        xaxis_title="",
-        yaxis_title="",
-    )
-
-    # =====================================================
-    # CONTROLES (posição da tabelinha e espaçamentos)
-    # =====================================================
-    def _fmt_int(v: int) -> str:
-        return f"{int(v):,}".replace(",", ".")
-
-    # ✅ (AJUSTE AQUI)
-    # - y_base: sobe/desce a tabelinha e as boquinhas
-    # - dy: espaçamento entre as 3 linhas (você pediu 0.055)
-    y_base = -0.23
-    dy = 0.055
-
-    # =====================================================
-    # LINHAS-GUIA (estilo tabela) — 3 linhas horizontais
-    # =====================================================
-    line_style = dict(color="rgba(255,255,255,0.25)", width=1)
-
-    for k in range(3):
-        y_line = y_base - (k * dy)
-        fig.add_shape(
-            type="line", xref="paper", yref="paper",
-            x0=0, x1=1, y0=y_line, y1=y_line,
-            line=line_style
-        )
-
-    # =====================================================
-    # “TABELINHA” abaixo de cada mês (só números, cores)
-    # =====================================================
-    for _, r in tab.iterrows():
-        mes = r["MÊS"]
-        p = _fmt_int(r["PROCEDENTE"])
-        i = _fmt_int(r["IMPROCEDENTE"])
-        t = _fmt_int(r["TOTAL"])
-
-        fig.add_annotation(
-            x=mes, xref="x",
-            yref="paper", y=y_base,
-            text=f"<span style='font-family:monospace;font-size:14px;color:{COR_PROC};'><b>{p}</b></span>",
-            showarrow=False, align="center",
-        )
-        fig.add_annotation(
-            x=mes, xref="x",
-            yref="paper", y=y_base - dy,
-            text=f"<span style='font-family:monospace;font-size:14px;color:{COR_IMP};'><b>{i}</b></span>",
-            showarrow=False, align="center",
-        )
-        fig.add_annotation(
-            x=mes, xref="x",
-            yref="paper", y=y_base - (2 * dy),
-            text=f"<span style='font-family:monospace;font-size:14px;color:{COR_TOT};'><b>{t}</b></span>",
-            showarrow=False, align="center",
-        )
-
-    # =====================================================
-    # LEGENDA “boquinhas” (alinhada com a tabelinha)
-    # =====================================================
-    # ✅ (AJUSTE AQUI)
-    # - x_leg: mais negativo = mais para esquerda
-    # - y_leg: sobe/desce (use junto com y_base para alinhar perfeito)
-    x_leg = -0.08
-    y_leg = y_base  # mesma altura da linha verde
-
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=x_leg, y=y_leg,
-        text=(f"<span style='color:{COR_PROC};font-size:16px'>■</span> "
-              "<span style='color:white;font-size:14px'><b>PROCEDENTE</b></span>"),
-        showarrow=False, align="left",
-    )
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=x_leg, y=y_leg - dy,
-        text=(f"<span style='color:{COR_IMP};font-size:16px'>■</span> "
-              "<span style='color:white;font-size:14px'><b>IMPROCEDENTE</b></span>"),
-        showarrow=False, align="left",
-    )
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=x_leg, y=y_leg - (2 * dy),
-        text=("<span style='color:#fcba03;font-size:16px'>■</span> "
-              "<span style='color:white;font-size:14px'><b>TOTAL</b></span>"),
-        showarrow=False, align="left",
-    )
-
-    # =====================================================
-    # TOTAL GERAL (quadrado à direita) - 3 linhas (TOTAL / PROCEDENTE / IMPROCEDENTE)
-    # =====================================================
-    total_geral = int(tab["TOTAL"].sum())
-    total_proc  = int(tab["PROCEDENTE"].sum())
-    total_imp   = int(tab["IMPROCEDENTE"].sum())
-
-    total_geral_fmt = f"{total_geral:,}".replace(",", ".")
-    total_proc_fmt  = f"{total_proc:,}".replace(",", ".")
-    total_imp_fmt   = f"{total_imp:,}".replace(",", ".")
-
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=1.10, y=0.55,
-        text=(
-            "<span style='font-size:12px;color:#fcba03'><b>TOTAL</b></span><br>"
-            f"<span style='font-size:18px;color:#fcba03'><b>{total_geral_fmt}</b></span><br><br>"
-            f"<span style='font-size:12px;color:{COR_PROC}'><b>PROCEDENTE</b></span><br>"
-            f"<span style='font-size:16px;color:{COR_PROC}'><b>{total_proc_fmt}</b></span><br><br>"
-            f"<span style='font-size:12px;color:{COR_IMP}'><b>IMPROCEDENTE</b></span><br>"
-            f"<span style='font-size:16px;color:{COR_IMP}'><b>{total_imp_fmt}</b></span>"
-        ),
-        showarrow=False,
-        align="left",
-        bgcolor="rgba(0,0,0,0.45)",
-        bordercolor="#fcba03",
-        borderwidth=1,
-        borderpad=10,
-    )
-
-    return fig, tabela_final
-
-# ======================================================
-# HTML (Notas por localidade)
-# ======================================================
-def resumo_por_localidade_html(df_base, col_local, selecionado, top_n=12):
-    if col_local is None or df_base.empty:
-        return ""
-    s = df_base[col_local].dropna().astype(str).str.upper()
-    vc = s.value_counts().reset_index()
-    vc.columns = ["LOCAL", "QTD"]
-    if len(vc) > top_n:
-        outros = int(vc.iloc[top_n:]["QTD"].sum())
-        vc = vc.iloc[:top_n].copy()
-        vc.loc[len(vc)] = ["OUTROS", outros]
+def html_torpedo_table(title: str, head_class: str, df_rows: pd.DataFrame) -> str:
     linhas = []
-    sel = str(selecionado).upper()
-    for _, r in vc.iterrows():
-        loc = r["LOCAL"]
-        qtd = int(r["QTD"])
-        active = (sel != "TOTAL" and loc == sel)
-        cls = "loc-row active" if active else "loc-row"
-        qtd_fmt = f"{qtd:,}".replace(",", ".")
-        linhas.append(f'<div class="{cls}"><span>{loc}</span><span>{qtd_fmt}</span></div>')
-    return "\n".join(linhas)
+    for _, r in df_rows.iterrows():
+        dstr = pd.to_datetime(r["Data"]).strftime("%d/%m/%Y")
+        linhas.append(
+            f"<tr>"
+            f"<td class='col-date'>{dstr}</td>"
+            f"<td class='col-dow'>{r['DOW']}</td>"
+            f"<td>{r['Demanda']}</td>"
+            f"</tr>"
+        )
+    body = "\n".join(linhas)
+    return f"""
+    <div class="tblwrap">
+      <div class="tblhead {head_class}">{title}</div>
+      <table class="tbl"><tbody>{body}</tbody></table>
+    </div>
+    """
+
+def compor_demanda_do_dia(g: pd.DataFrame) -> str:
+    # Se tiver múltiplas linhas no dia, sintetiza TOP tipo/localidade
+    tipos_top = g["_TIPO_"].value_counts().head(2).index.tolist()
+    locs_top = g["_LOCAL_"].value_counts().head(2).index.tolist()
+    parts = []
+    if tipos_top:
+        parts.append("TIPO: " + ", ".join(tipos_top))
+    if locs_top:
+        parts.append("LOCAL: " + ", ".join(locs_top))
+    return " | ".join(parts) if parts else "-"
 
 # ======================================================
 # BOTÃO ATUALIZAR BASE
@@ -637,28 +356,34 @@ with colB:
     st.caption("Use quando atualizar o arquivo no Drive (XLSX).")
 
 # ======================================================
-# CARREGAMENTO (XLSX no Drive)
+# CARREGAMENTO (XLSX no Drive) — LINK FIXO NO SCRIPT (como você pediu)
 # ======================================================
-# ⚠️ Use o link do Drive do arquivo XLSX (qualquer pessoa com o link - visualizador)
 URL_BASE = "https://drive.google.com/uc?id=1VadynN01W4mNRLfq8ABZAaQP8Sfim5tb"
 
 df = carregar_base(URL_BASE)
-validar_estrutura(df)
-
-COL_ESTADO    = achar_coluna(df, ["ESTADO", "LOCALIDADE", "UF"])
-COL_RESULTADO = achar_coluna(df, ["RESULTADO"])
-COL_TIPO      = achar_coluna(df, ["TIPO"])
-COL_MOTIVO    = achar_coluna(df, ["MOTIVO"])
-COL_REGIONAL  = achar_coluna(df, ["REGIONAL"])
-COL_DATA      = achar_coluna(df, ["DATA"])
-
-df[COL_DATA] = pd.to_datetime(df[COL_DATA], errors="coerce", dayfirst=True)
-df["_TIPO_"] = df[COL_TIPO].astype(str).str.upper().str.strip()
-df["_RES_"]  = df[COL_RESULTADO].astype(str).str.upper().str.strip()
+validar_estrutura_posicional(df)
 
 # ======================================================
-# SELETORES (Ano • Mensal/Semanal • Calendário • Semana)
-# - Semana: segunda a sexta (ISO week)
+# MAPEAMENTO FIXO (A/B/C/D/H)
+# A=DATA | B=NOTAS | C=TIPO | D=LOCALIDADE | H=COLAB
+# ======================================================
+COL_DATA  = df.columns[0]   # A
+COL_NOTAS = df.columns[1]   # B (NOTAS)
+COL_TIPO  = df.columns[2]   # C (TIPO)
+COL_LOCAL = df.columns[3]   # D (LOCALIDADE)
+COL_COLAB = df.columns[7]   # H (COLABORADORES)
+
+df = df.copy()
+df[COL_DATA] = pd.to_datetime(df[COL_DATA], errors="coerce", dayfirst=True)
+df = df.dropna(subset=[COL_DATA]).copy()
+
+df["_COLAB_"] = df[COL_COLAB].astype(str).str.upper().str.strip()
+df["_TIPO_"]  = df[COL_TIPO].astype(str).str.upper().str.strip()
+df["_LOCAL_"] = df[COL_LOCAL].astype(str).str.upper().str.strip()
+df["_NOTAS_"] = pd.to_numeric(df[COL_NOTAS], errors="coerce").fillna(0).astype(int)
+
+# ======================================================
+# SELETORES (Ano • Semanal • Calendário • Semana ISO)
 # ======================================================
 anos_disponiveis = sorted(df[COL_DATA].dropna().dt.year.unique().astype(int).tolist())
 ano_padrao = anos_disponiveis[-1] if anos_disponiveis else None
@@ -678,8 +403,8 @@ with c_sel1:
 with c_sel2:
     modo_periodo = st.segmented_control(
         "Período",
-        options=["Mensal", "Semanal"],
-        default=st.session_state.get("modo_periodo", "Mensal"),
+        options=["Semanal", "Mensal"],
+        default=st.session_state.get("modo_periodo", "Semanal"),
         key="modo_periodo",
     )
 
@@ -709,17 +434,17 @@ with c_sel4:
         opcoes_sem = ["Todas"] + [f"S{w:02d}" for w in semanas_disp]
         semana_sel = st.selectbox("Semana (S01..S53)", opcoes_sem, index=0, key="semana_sel")
 
-# aplica filtro semanal (ISO seg(1) a sex(5))
+# aplica semana ISO seg(1) a sex(5)
 if modo_periodo == "Semanal" and semana_sel and semana_sel != "Todas" and ano_sel is not None:
     w = int(str(semana_sel).replace("S", ""))
     try:
-        data_ini = date.fromisocalendar(int(ano_sel), w, 1)  # segunda
-        data_fim = date.fromisocalendar(int(ano_sel), w, 5)  # sexta
+        data_ini = date.fromisocalendar(int(ano_sel), w, 1)
+        data_fim = date.fromisocalendar(int(ano_sel), w, 5)
         st.caption(f"Semana {semana_sel}: {data_ini.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')} (seg–sex)")
     except ValueError:
         st.warning("Semana inválida para este ano (ISO). Usando o filtro por calendário.")
 
-# aplica filtro por calendário (inclusive)
+# aplica filtro calendário (inclusive)
 df_periodo = df_ano.copy()
 if not df_periodo.empty and df_periodo[COL_DATA].notna().any():
     _dini = pd.to_datetime(data_ini)
@@ -727,190 +452,239 @@ if not df_periodo.empty and df_periodo[COL_DATA].notna().any():
     df_periodo = df_periodo[(df_periodo[COL_DATA] >= _dini) & (df_periodo[COL_DATA] <= _dfim)].copy()
 
 # ======================================================
-# "ABAS" UF
+# FILTROS (Localidade / Tipo)
 # ======================================================
-ufs = sorted(df[COL_ESTADO].dropna().astype(str).str.upper().unique().tolist())
-ufs = ["TOTAL"] + ufs
-if "uf_sel" not in st.session_state:
-    st.session_state.uf_sel = "TOTAL"
-uf_sel = st.segmented_control(label="", options=ufs, default=st.session_state.uf_sel)
-st.session_state.uf_sel = uf_sel
+locais = sorted([x for x in df_periodo["_LOCAL_"].dropna().unique().tolist() if str(x).strip() != ""])
+tipos  = sorted([x for x in df_periodo["_TIPO_"].dropna().unique().tolist() if str(x).strip() != ""])
 
-df_filtro = df_periodo if uf_sel == "TOTAL" else df_periodo[df_periodo[COL_ESTADO].astype(str).str.upper() == uf_sel]
-df_am = df_filtro[df_filtro["_TIPO_"].str.contains("AM", na=False)]
-df_as = df_filtro[df_filtro["_TIPO_"].str.contains("AS", na=False)]
+f1, f2 = st.columns([1.4, 1.4], gap="medium")
+with f1:
+    local_sel = st.multiselect("Localidade", options=locais, default=[])
+with f2:
+    tipo_sel = st.multiselect("Tipo de nota", options=tipos, default=[])
+
+df_filtro = df_periodo.copy()
+if local_sel:
+    df_filtro = df_filtro[df_filtro["_LOCAL_"].isin([str(s).upper().strip() for s in local_sel])]
+if tipo_sel:
+    df_filtro = df_filtro[df_filtro["_TIPO_"].isin([str(s).upper().strip() for s in tipo_sel])]
 
 # ======================================================
-# 6 BLOCOS (CARDS)
+# WEEK RANGE (seg–sex) e acumulados
 # ======================================================
-row1 = st.columns([1.09, 1.15, 1.15], gap="large")
+if modo_periodo == "Semanal":
+    mon = monday_of_week(data_ini)
+    week_start = pd.to_datetime(mon)
+    week_end = pd.to_datetime(mon + timedelta(days=4))
+else:
+    # mensal: usa o próprio range do calendário
+    week_start = pd.to_datetime(data_ini)
+    week_end = pd.to_datetime(data_fim)
 
-with row1[0]:
-    total = len(df_filtro); am = len(df_am); az = len(df_as)
-    total_fmt = f"{total:,}".replace(",", ".")
-    am_fmt    = f"{am:,}".replace(",", ".")
-    as_fmt    = f"{az:,}".replace(",", ".")
+df_semana = df_filtro[(df_filtro[COL_DATA] >= week_start) & (df_filtro[COL_DATA] <= week_end)].copy()
+df_semana["DOW_NUM"] = df_semana[COL_DATA].dt.weekday
+df_semana["DOW"] = df_semana["DOW_NUM"].map(DOW_PT)
+df_semana = df_semana[df_semana["DOW_NUM"].between(0, 4)]  # seg–sex
+
+total_periodo = int(df_semana["_NOTAS_"].sum())
+total_ano = int(df[df[COL_DATA].dt.year == int(ano_sel)]["_NOTAS_"].sum()) if ano_sel else int(df["_NOTAS_"].sum())
+
+# ======================================================
+# Seleção de colaboradores no gráfico
+# ======================================================
+collabs = []
+if not df_semana.empty:
+    collabs = df_semana.groupby("_COLAB_")["_NOTAS_"].sum().sort_values(ascending=False).head(10).index.tolist()
+else:
+    collabs = sorted(df_filtro["_COLAB_"].dropna().unique().tolist())[:10]
+
+col_g1, col_g2 = st.columns([2.4, 1.0], gap="medium")
+with col_g2:
+    selected_collabs = st.multiselect(
+        "Colaboradores no gráfico",
+        options=sorted(set(collabs)),
+        default=collabs[:3] if len(collabs) else []
+    )
+
+# ======================================================
+# LINHA (gráfico por colaborador, seg–sex)
+# ======================================================
+def grafico_linha_colab(df_semana: pd.DataFrame, selected: list[str]):
+    if df_semana.empty or not selected:
+        return None
+
+    base_days = pd.DataFrame({"DOW_NUM": [0,1,2,3,4], "DOW": ["SEG","TER","QUA","QUI","SEX"]})
+    out = []
+    for c in selected:
+        tmp = df_semana[df_semana["_COLAB_"] == c].groupby(["DOW_NUM","DOW"], as_index=False)["_NOTAS_"].sum()
+        tmp = base_days.merge(tmp, on=["DOW_NUM","DOW"], how="left")
+        tmp["_NOTAS_"] = tmp["_NOTAS_"].fillna(0).astype(int)
+        tmp["Colaborador"] = c
+        tmp = tmp.rename(columns={"_NOTAS_": "Notas"})
+        out.append(tmp)
+
+    plot_df = pd.concat(out, ignore_index=True).sort_values("DOW_NUM")
+    fig = px.line(plot_df, x="DOW", y="Notas", color="Colaborador", markers=True, template="plotly_white")
+    fig.update_layout(height=320, margin=dict(l=10, r=10, t=35, b=10), legend_title_text="")
+    return fig
+
+# ======================================================
+# CARDS (Topo: gráfico + KPI)
+# ======================================================
+with col_g1:
+    st.markdown('<div class="card"><div class="card-title">PRODUTIVIDADE (SEG–SEX) — POR COLABORADOR</div>', unsafe_allow_html=True)
+    fig_line = grafico_linha_colab(df_semana, selected_collabs)
+    if fig_line is None:
+        st.info("Sem dados no período selecionado ou nenhum colaborador selecionado.")
+    else:
+        st.plotly_chart(fig_line, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with col_g2:
+    periodo_txt = f"{week_start.strftime('%d/%m/%Y')} a {week_end.strftime('%d/%m/%Y')}"
     st.markdown(
         f"""
         <div class="card">
-          <div class="card-title">ACUMULADO DE NOTAS AM / AS • {ano_txt}</div>
+          <div class="card-title">RESUMO</div>
           <div class="kpi-row">
-            <div class="kpi-big">{total_fmt}</div>
+            <div class="kpi-big">{str(total_periodo)}</div>
             <div class="kpi-mini">
-              <div class="lbl">AM</div>
-              <div class="val">{am_fmt}</div>
-            </div>
-            <div class="kpi-mini">
-              <div class="lbl">AS</div>
-              <div class="val">{as_fmt}</div>
+              <div class="lbl">PERÍODO</div>
+              <div class="val">{str(total_periodo)}</div>
             </div>
           </div>
-          <div style="margin-top:14px; text-align:left;">
-            <div style="font-weight:950;color:#0b2b45;margin-bottom:8px;text-transform:uppercase;">
-              Notas por localidade
+          <div style="margin-top:10px; font-weight:950; color:#0b2b45;">
+            {periodo_txt}
+          </div>
+          <div style="margin-top:10px; display:flex; justify-content:space-between; gap:8px;">
+            <div style="flex:1; background:rgba(255,255,255,0.35); border:1px solid rgba(10,40,70,0.22); border-radius:12px; padding:10px;">
+              <div style="font-weight:900; color:#0b2b45; font-size:12px;">TOTAL NO ANO</div>
+              <div style="font-weight:950; color:#9b0d0d; font-size:22px; line-height:1.0;">{str(total_ano)}</div>
             </div>
-            {resumo_por_localidade_html(df_periodo, COL_ESTADO, uf_sel, top_n=12)}
           </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-with row1[1]:
-    st.markdown('<div class="card"><div class="card-title">ACUMULADO ANUAL – AM</div>', unsafe_allow_html=True)
-    if df_am.empty:
-        st.info("Sem dados AM.")
-    else:
-        fig = donut_resultado(df_am)
-        fig = _titulo_plotly(fig, "ACUMULADO ANUAL – AM", uf_sel)
-        st.plotly_chart(fig, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with row1[2]:
-    st.markdown('<div class="card"><div class="card-title">ACUMULADO ANUAL – AS</div>', unsafe_allow_html=True)
-    if df_as.empty:
-        st.info("Sem dados AS.")
-    else:
-        fig = donut_resultado(df_as)
-        fig = _titulo_plotly(fig, "ACUMULADO ANUAL – AS", uf_sel)
-        st.plotly_chart(fig, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-row2 = st.columns([1, 1.3, 1.3], gap="large")
-
-with row2[0]:
-    st.markdown('<div class="card"><div class="card-title">IMPROCEDÊNCIAS POR REGIONAL – NOTA AM</div>', unsafe_allow_html=True)
-    base_imp_am = df_am[df_am["_RES_"].str.contains("IMPROCED", na=False)]
-    fig = barh_contagem(base_imp_am, COL_REGIONAL, "IMPROCEDÊNCIAS POR REGIONAL – NOTA AM", uf_sel)
-    if fig is not None:
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Sem improcedências (AM) por regional.")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with row2[1]:
-    st.markdown('<div class="card"><div class="card-title">MOTIVOS DE IMPROCEDÊNCIAS – NOTA AM</div>', unsafe_allow_html=True)
-    base_imp_am = df_am[df_am["_RES_"].str.contains("IMPROCED", na=False)]
-    fig = barh_contagem(base_imp_am, COL_MOTIVO, "MOTIVOS DE IMPROCEDÊNCIAS – NOTA AM", uf_sel)
-    if fig is not None:
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Sem motivos (AM).")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with row2[2]:
-    st.markdown('<div class="card"><div class="card-title">MOTIVOS DE IMPROCEDÊNCIAS – NOTA AS</div>', unsafe_allow_html=True)
-    base_imp_as = df_as[df_as["_RES_"].str.contains("IMPROCED", na=False)]
-    fig = barh_contagem(base_imp_as, COL_MOTIVO, "MOTIVOS DE IMPROCEDÊNCIAS – NOTA AS", uf_sel)
-    if fig is not None:
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Sem motivos (AS).")
-    st.markdown("</div>", unsafe_allow_html=True)
-
 # ======================================================
-# ACUMULADO MENSAL
+# 3 TABELAS (abaixo do gráfico) — “torpedo”
+# Cada tabela mostra seg–sex e uma “Demanda” sintetizada por dia:
+# TIPO + LOCALIDADE (porque sua base não tem DEMANDA textual)
 # ======================================================
-st.markdown('<div class="card"><div class="card-title">ACUMULADO MENSAL DE NOTAS AM – AS</div>', unsafe_allow_html=True)
+st.markdown('<div class="card"><div class="card-title">TABELAS (3) — TORPEDO SEMANAL (SEG–SEX)</div>', unsafe_allow_html=True)
 
-fig_mensal, tabela_mensal = acumulado_mensal_fig_e_tabela(df_filtro, COL_DATA)
+base_days = pd.DataFrame({"Data": pd.to_datetime([week_start + pd.Timedelta(days=i) for i in range(5)])})
+base_days["DOW"] = base_days["Data"].dt.weekday.map(DOW_PT)
 
-if fig_mensal is not None:
-    fig_mensal = _titulo_plotly(fig_mensal, "ACUMULADO MENSAL DE NOTAS AM – AS", uf_sel)
-    st.plotly_chart(fig_mensal, use_container_width=True)
-else:
-    st.info("Sem dados mensais (DATA vazia/ inválida).")
+# escolhas para as 3 tabelas
+col_t1, col_t2, col_t3 = st.columns(3, gap="large")
+pessoas = sorted(df_filtro["_COLAB_"].dropna().unique().tolist())
+
+def tabela_para_colaborador(nome_colab: str) -> pd.DataFrame:
+    df_c = df_semana[df_semana["_COLAB_"] == nome_colab].copy()
+    if df_c.empty:
+        out = base_days.copy()
+        out["Demanda"] = "-"
+        return out
+
+    df_c["Data"] = df_c[COL_DATA].dt.normalize()
+    agg = df_c.groupby("Data", as_index=False).apply(lambda g: compor_demanda_do_dia(g)).reset_index()
+    agg = agg.rename(columns={0: "Demanda"})[["Data", "Demanda"]]
+    out = base_days.merge(agg, on="Data", how="left")
+    out["Demanda"] = out["Demanda"].fillna("-")
+    return out
+
+# Se não tiver seleção anterior, pega top 3 do período
+top3 = []
+if not df_semana.empty:
+    top3 = df_semana.groupby("_COLAB_")["_NOTAS_"].sum().sort_values(ascending=False).head(3).index.tolist()
+top3 = top3 if len(top3) == 3 else (pessoas[:3] if len(pessoas) >= 3 else pessoas)
+
+s1, s2, s3 = st.columns(3, gap="large")
+with s1:
+    colab1 = st.selectbox("Tabela 1", options=pessoas, index=(pessoas.index(top3[0]) if top3 else 0) if pessoas else 0, key="t1")
+with s2:
+    colab2 = st.selectbox("Tabela 2", options=pessoas, index=(pessoas.index(top3[1]) if len(top3) > 1 else 0) if pessoas else 0, key="t2")
+with s3:
+    colab3 = st.selectbox("Tabela 3", options=pessoas, index=(pessoas.index(top3[2]) if len(top3) > 2 else 0) if pessoas else 0, key="t3")
+
+tcols = st.columns(3, gap="large")
+cores = ["head-blue", "head-green", "head-yellow"]
+selecionados = [colab1, colab2, colab3]
+
+rendered_tables = {}
+
+for i in range(3):
+    nome = selecionados[i] if i < len(selecionados) else None
+    if not nome:
+        continue
+    df_tbl = tabela_para_colaborador(nome)
+    rendered_tables[nome] = df_tbl
+    with tcols[i]:
+        st.markdown(html_torpedo_table(f"DEMANDA DE APOIO – {nome}", cores[i], df_tbl), unsafe_allow_html=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ======================================================
-# TABELA NO FINAL
+# PDF (relatório do torpedo)
 # ======================================================
-st.markdown('<div class="card"><div class="card-title">TABELA — VALORES MENSAIS</div>', unsafe_allow_html=True)
-if tabela_mensal is not None:
-    st.dataframe(tabela_mensal, use_container_width=True, hide_index=True)
-else:
-    st.info("Sem tabela mensal para exibir.")
-st.markdown("</div>", unsafe_allow_html=True)
-
-# ======================================================
-# PDF (relatório)
-# ======================================================
-def gerar_pdf(df_tabela, ano_ref, uf_sel, df_filtro_ref, df_am_ref, df_as_ref):
+def gerar_pdf_torpedo(ano_ref, periodo_txt, total_periodo, total_ano, fig_dummy, tabelas_dict):
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     styles = getSampleStyleSheet()
     elementos = []
-    elementos.append(Paragraph(f"<b>DASHBOARD NOTAS AM x AS – {ano_ref}</b>", styles["Title"]))
-    elementos.append(Spacer(1, 12))
-    elementos.append(Paragraph(f"<b>UF selecionada:</b> {uf_sel}", styles["Normal"]))
+
+    elementos.append(Paragraph(f"<b>TORPEDO SEMANAL – PRODUTIVIDADE ({ano_ref})</b>", styles["Title"]))
+    elementos.append(Spacer(1, 10))
+    elementos.append(Paragraph(f"<b>Período:</b> {periodo_txt}", styles["Normal"]))
+    elementos.append(Paragraph(f"<b>Total do período:</b> {total_periodo}", styles["Normal"]))
+    elementos.append(Paragraph(f"<b>Total no ano:</b> {total_ano}", styles["Normal"]))
     elementos.append(Spacer(1, 12))
 
-    total = len(df_filtro_ref); am = len(df_am_ref); az = len(df_as_ref)
-    elementos.append(Paragraph(
-        f"<b>Total de Notas:</b> {total}<br/>"
-        f"<b>AM:</b> {am} &nbsp;&nbsp; <b>AS:</b> {az}",
-        styles["Normal"]
-    ))
-    elementos.append(Spacer(1, 14))
+    elementos.append(Paragraph("<b>Tabelas (seg–sex)</b>", styles["Heading2"]))
+    elementos.append(Spacer(1, 6))
 
-    if df_tabela is not None and not df_tabela.empty:
-        data = [df_tabela.columns.tolist()] + df_tabela.values.tolist()
-        tabela = Table(data, repeatRows=1)
-        tabela.setStyle(TableStyle([
+    for nome, df_tbl in (tabelas_dict or {}).items():
+        elementos.append(Paragraph(f"<b>{nome}</b>", styles["Heading3"]))
+        data = [["Data", "Dia", "Resumo"]] + [
+            [pd.to_datetime(r["Data"]).strftime("%d/%m/%Y"), r["DOW"], r["Demanda"]]
+            for _, r in df_tbl.iterrows()
+        ]
+        t = Table(data, repeatRows=1, colWidths=[75, 35, 360])
+        t.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
             ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
-            ("ALIGN", (1,1), (-1,-1), "CENTER"),
             ("FONT", (0,0), (-1,0), "Helvetica-Bold"),
-            ("BOTTOMPADDING", (0,0), (-1,0), 8),
-            ("TOPPADDING", (0,0), (-1,0), 8),
+            ("FONTSIZE", (0,0), (-1,-1), 8),
+            ("VALIGN", (0,0), (-1,-1), "TOP"),
         ]))
-        elementos.append(Paragraph("<b>Resumo Mensal</b>", styles["Heading2"]))
-        elementos.append(Spacer(1, 8))
-        elementos.append(tabela)
+        elementos.append(t)
+        elementos.append(Spacer(1, 10))
 
     doc.build(elementos)
     buffer.seek(0)
     return buffer
 
-pdf_buffer = gerar_pdf(
-    df_tabela=tabela_mensal,
+periodo_txt_pdf = f"{week_start.strftime('%d/%m/%Y')} a {week_end.strftime('%d/%m/%Y')}"
+pdf_buffer = gerar_pdf_torpedo(
     ano_ref=ano_txt,
-    uf_sel=uf_sel,
-    df_filtro_ref=df_filtro,
-    df_am_ref=df_am,
-    df_as_ref=df_as,
+    periodo_txt=periodo_txt_pdf,
+    total_periodo=total_periodo,
+    total_ano=total_ano,
+    fig_dummy=None,
+    tabelas_dict=rendered_tables
 )
 
 st.download_button(
-    label="📄 Exportar PDF",
+    label="📄 Exportar PDF (Torpedo)",
     data=pdf_buffer,
-    file_name=f"IW58_Dashboard_{ano_txt}_{uf_sel}.pdf",
+    file_name=f"Torpedo_Semanal_{ano_txt}_{week_start.strftime('%Y%m%d')}.pdf",
     mime="application/pdf"
 )
 
 # ======================================================
-# EXPORTAR DASHBOARD (PRINT PARA PDF) - OPÇÃO A
+# EXPORTAR DASHBOARD (PRINT PARA PDF)
 # ======================================================
 st.markdown("""
 <style>
