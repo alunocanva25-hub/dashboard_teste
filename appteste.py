@@ -193,24 +193,87 @@ div[data-baseweb="segmented-control"] div[aria-checked="true"] span{
 """, unsafe_allow_html=True)
 
 # ======================================================
-# LOGIN (centralizado)
+# LOGIN
 # ======================================================
 def tela_login():
     st.markdown("""
-    <div class="login-wrap">
-      <div class="login-card">
-        <div class="login-title">🔐 Acesso Restrito</div>
-        <div class="login-sub">Informe suas credenciais para continuar</div>
+    <style>
+      .login-frame { width: min(980px, 96vw); margin: 0 auto; }
+      .login-card{
+        border-radius: 26px; overflow: hidden;
+        border: 2px solid rgba(10,40,70,0.25);
+        box-shadow: 0 16px 40px rgba(0,0,0,0.22);
+        background: rgba(255,255,255,0.40);
+        backdrop-filter: blur(8px);
+      }
+      .login-header{ padding: 22px; background: #2f6f97; color: white; }
+      .login-header .h1{ font-size: 34px; font-weight: 950; }
+      .login-header .h2{ font-size: 18px; font-weight: 800; opacity: .95; }
+      .login-body{ padding: 18px 22px; background: rgba(255,255,255,0.22); }
+
+      div[data-testid="stTextInput"] label{ display:none !important; }
+      div[data-testid="stTextInput"] input{
+        width: 100% !important; height: 56px !important;
+        border-radius: 10px !important;
+        border: 2px solid rgba(10,40,70,0.25) !important;
+        background: rgba(20,20,25,0.88) !important;
+        padding: 0 16px !important;
+        font-weight: 900 !important;
+        font-size: 20px !important;
+        color: #ffffff !important;
+        box-sizing: border-box !important;
+      }
+      div[data-testid="stTextInput"] input::placeholder{ color: rgba(255,255,255,0.65); }
+
+      .login-btns div.stButton > button{
+        width: 100%; height: 56px;
+        border-radius: 12px;
+        border: 2px solid rgba(10,40,70,0.22);
+        background: rgba(255,255,255,0.35);
+        color: #0b2b45;
+        font-weight: 950;
+        font-size: 18px;
+      }
+      .login-btns div.stButton > button:hover{ background: rgba(255,255,255,0.55); }
+
+      .login-note{
+        margin-top: 10px;
+        font-size: 12px;
+        font-weight: 900;
+        color: rgba(11,43,69,0.85);
+        text-align: center;
+      }
+    </style>
     """, unsafe_allow_html=True)
 
-    usuario = st.text_input("Usuário", key="login_usuario")
-    senha = st.text_input("Senha", type="password", key="login_senha")
+    st.markdown("<div class='login-top-space'></div>", unsafe_allow_html=True)
 
-    c1, c2 = st.columns(2)
-    with c1:
-        entrar = st.button("Entrar", use_container_width=True)
-    with c2:
-        limpar = st.button("Limpar", use_container_width=True)
+    _, center, _ = st.columns([1, 6, 1])
+    with center:
+        st.markdown("<div class='login-frame'>", unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="login-card">
+          <div class="login-header">
+            <div class="h1">🔐 Acesso Restrito</div>
+            <div class="h2">Torpedo Semanal • Produtividade</div>
+          </div>
+          <div class="login-body">
+        """, unsafe_allow_html=True)
+
+        st.markdown("<div style='margin-top:30px'></div>", unsafe_allow_html=True)
+        st.text_input("", key="login_usuario", placeholder="Digite seu usuário")
+        st.text_input("", key="login_senha", type="password", placeholder="Digite sua senha")
+
+        b1, b2 = st.columns(2, gap="medium")
+        with b1:
+            entrar = st.button("Entrar")
+        with b2:
+            limpar = st.button("Limpar")
+
+        st.markdown("""<div class="login-note">✅ Segurança via <b>st.secrets</b></div>""", unsafe_allow_html=True)
+        st.markdown("""</div></div>""", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     if limpar:
         st.session_state["login_usuario"] = ""
@@ -218,19 +281,29 @@ def tela_login():
         st.rerun()
 
     if entrar:
-        if usuario == st.secrets["auth"]["usuario"] and senha == st.secrets["auth"]["senha"]:
-            st.session_state["logado"] = True
-            st.rerun()
-        else:
-            st.error("Usuário ou senha inválidos")
+        try:
+            if (
+                st.session_state.get("login_usuario") == st.secrets["auth"]["usuario"]
+                and st.session_state.get("login_senha") == st.secrets["auth"]["senha"]
+            ):
+                st.session_state["logado"] = True
+                st.rerun()
+            else:
+                st.error("Usuário ou senha inválidos")
+        except Exception:
+            st.error("Secrets não configurado no Streamlit Cloud.")
 
-    st.markdown("</div></div>", unsafe_allow_html=True)
 
+# ======================================================
+# SESSÃO
+# ======================================================
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
+
 if not st.session_state["logado"]:
     tela_login()
     st.stop()
+
 
 # ======================================================
 # TOPO
@@ -241,15 +314,16 @@ st.markdown("""
     <div class="brand-badge">3C</div>
     <div class="brand-text">
       <div class="t1">TORPEDO SEMANAL – PRODUTIVIDADE</div>
-      <div class="t2">Gráfico por colaborador + 3 tabelas (seg–sex) no padrão da referência</div>
+      <div class="t2">Barras diárias por colaborador + Donut acumulado</div>
     </div>
   </div>
   <div class="right-note">
     BASE DRIVE (XLSX)<br>
-    <small>Colab = H • Notas = B • Tipo = C • Localidade = D</small>
+    <small>Colab = H • Notas = B • Tipo = C • Localidade = D • Data (baixa) = E</small>
   </div>
 </div>
 """, unsafe_allow_html=True)
+
 
 # ======================================================
 # HELPERS (Drive XLSX/CSV)
