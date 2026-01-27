@@ -1023,316 +1023,86 @@ st.download_button(
 )
 
 # ======================================================
-# RELATÓRIO POR REGIONAL (NOVO)
+# PARTE 2/2 — RELATÓRIOS AVANÇADOS
 # ======================================================
 
-def _classe_resultado(df_):
-    """Cria coluna _CLASSE_ = PROCEDENTE / IMPROCEDENTE / OUTROS"""
-    d = df_.copy()
-    d["_CLASSE_"] = "OUTROS"
-    d.loc[d["_RES_"].str.contains("PROCED", na=False), "_CLASSE_"] = "PROCEDENTE"
-    d.loc[d["_RES_"].str.contains("IMPROCED", na=False), "_CLASSE_"] = "IMPROCEDENTE"
-    return d
+COR_PROC = "#2e7d32"
+COR_IMP  = "#c62828"
+COR_OUT  = "#546e7a"
 
-def grafico_regional_resumo(df_base, col_regional, uf):
-    """
-    - Se escolher 1 regional: mostra barras PROCEDENTE/IMPROCEDENTE/OUTROS
-    - Se 'Todas': mostra barras por regional (total), top 15
-    """
-    if df_base.empty or col_regional is None:
-        return None, None, None
+def classificar_resultado(df):
+    df = df.copy()
+    df["_CLASSE_"] = "OUTROS"
+    df.loc[df["_RES_"].str.contains("PROCED", na=False), "_CLASSE_"] = "PROCEDENTE"
+    df.loc[df["_RES_"].str.contains("IMPROCED", na=False), "_CLASSE_"] = "IMPROCEDENTE"
+    return df
 
-    base = df_base.dropna(subset=[col_regional]).copy()
-    if base.empty:
-        return None, None, None
+st.markdown('<div class="card"><div class="card-title">RELATÓRIOS GERENCIAIS</div>', unsafe_allow_html=True)
 
-    base[col_regional] = base[col_regional].astype(str).str.upper().str.strip()
-    regionais = sorted(base[col_regional].unique().tolist())
-    opcoes = ["Todas"] + regionais
+tabs = st.tabs([
+    "📍 Regional",
+    "🗺️ Estado (UF)",
+    "📅 Comparativo Anual"
+])
 
-    cR1, cR2 = st.columns([2.2, 1.0], gap="medium")
-    with cR1:
-        reg_sel = st.selectbox("Regional", opcoes, index=0, key=f"reg_sel_{uf}")
-    with cR2:
-        modo = st.selectbox("Modo do gráfico", ["Por Resultado", "Comparar Regionais"], index=0, key=f"reg_modo_{uf}")
+# ======================================================
+# TAB 1 — REGIONAL
+# ======================================================
+with tabs[0]:
+    st.subheader("Relatório por Regional")
+    regional_sel = st.selectbox("Regional", sorted(df_periodo[COL_REGIONAL].dropna().unique()))
+    base = classificar_resultado(df_periodo[df_periodo[COL_REGIONAL] == regional_sel])
 
-    base = _classe_resultado(base)
-
-    # --------- CASO 1: uma regional -> resultado (proced/imp/outros)
-    if reg_sel != "Todas" and modo == "Por Resultado":
-        rec = base[base[col_regional] == reg_sel].copy()
-        if rec.empty:
-            return None, reg_sel, None
-
-        tab = (
-            rec.groupby("_CLASSE_")
-            .size()
-            .reindex(["PROCEDENTE", "IMPROCEDENTE", "OUTROS"], fill_value=0)
-            .reset_index()
-        )
-        tab.columns = ["RESULTADO", "QTD"]
-
-        fig = px.bar(
-            tab,
-            x="RESULTADO",
-            y="QTD",
-            text="QTD",
-            template="plotly_white"
-        )
-        fig.update_layout(height=320, margin=dict(l=10, r=10, t=50, b=10), showlegend=False)
-        fig.update_traces(textposition="outside", cliponaxis=False)
-
-        return fig, reg_sel, tab
-
-    # --------- CASO 2: comparar regionais (todas ou uma) -> total por regional
-    # (aqui faz mais sentido mostrar ranking de regionais)
-    if reg_sel == "Todas":
-        rec = base.copy()
-    else:
-        rec = base[base[col_regional] == reg_sel].copy()
-
-    if rec.empty:
-        return None, reg_sel, None
-
-    # ranking por regional (total)
-    tab_reg = (
-        rec.groupby(col_regional)
-        .size()
-        .reset_index(name="TOTAL")
-        .sort_values("TOTAL", ascending=False)
-        .head(15)
-    )
+    resumo = base.groupby("_CLASSE_").size().reset_index(name="QTD")
 
     fig = px.bar(
-        tab_reg.sort_values("TOTAL"),
-        x="TOTAL",
-        y=col_regional,
-        orientation="h",
-        text="TOTAL",
-        template="plotly_white"
-    )
-    fig.update_layout(height=420, margin=dict(l=10, r=10, t=50, b=10), showlegend=False)
-    fig.update_traces(textposition="outside", cliponaxis=False)
-    fig.update_yaxes(title_text="")
-
-    return fig, reg_sel, tab_reg
-
-# ======================================================
-# BOTÃO + CARD (NOVO)
-# Coloque este bloco onde você quiser no layout (ex.: após row2)
-# ======================================================
-
-st.markdown('<div class="card"><div class="card-title">RELATÓRIO POR REGIONAL (GRÁFICO)</div>', unsafe_allow_html=True)
-
-# Botão "abrir" (toggle)
-if "show_regional_report" not in st.session_state:
-    st.session_state["show_regional_report"] = False
-
-colBtn, colInfo = st.columns([1.0, 3.0], gap="medium")
-with colBtn:
-    if st.button("📊 Gerar relatório por regional"):
-        st.session_state["show_regional_report"] = not st.session_state["show_regional_report"]
-with colInfo:
-    st.caption("Gera gráfico por Regional dentro do período/UF selecionados.")
-
-if st.session_state["show_regional_report"]:
-    # usa df_filtro (AM+AS) do período atual e UF atual
-    fig_reg, reg_sel, tab_reg = grafico_regional_resumo(df_filtro, COL_REGIONAL, uf_sel)
-
-    if fig_reg is None:
-        st.info("Sem dados de REGIONAL para o filtro atual.")
-    else:
-        # título bonitinho no padrão do seu helper
-        fig_reg = _titulo_plotly(fig_reg, f"RELATÓRIO POR REGIONAL • {reg_sel}", uf_sel)
-        st.plotly_chart(fig_reg, use_container_width=True)
-
-        # download do resumo
-        if tab_reg is not None and not tab_reg.empty:
-            csv_bytes = tab_reg.to_csv(index=False).encode("utf-8-sig")
-            st.download_button(
-                "⬇️ Baixar resumo (CSV)",
-                data=csv_bytes,
-                file_name=f"regional_{uf_sel}_{ano_txt}_{reg_sel}.csv",
-                mime="text/csv"
-            )
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-# ======================================================
-# RELATÓRIOS (UF + ANO) — NOVO
-# ======================================================
-
-def _classe_resultado(df_):
-    d = df_.copy()
-    d["_CLASSE_"] = "OUTROS"
-    d.loc[d["_RES_"].str.contains("PROCED", na=False), "_CLASSE_"] = "PROCEDENTE"
-    d.loc[d["_RES_"].str.contains("IMPROCED", na=False), "_CLASSE_"] = "IMPROCEDENTE"
-    return d
-
-def relatorio_por_estado(df_base, col_estado, uf_atual):
-    """Mostra ranking de UFs e um gráfico empilhado (Procedente/Improcedente/Outros) por UF."""
-    if df_base.empty or col_estado is None:
-        return None, None
-
-    base = df_base.dropna(subset=[col_estado]).copy()
-    if base.empty:
-        return None, None
-
-    base[col_estado] = base[col_estado].astype(str).str.upper().str.strip()
-    base = _classe_resultado(base)
-
-    # tabela pivot: UF x classe
-    tab = (
-        base.pivot_table(index=col_estado, columns="_CLASSE_", values="_CLASSE_", aggfunc="count", fill_value=0)
-        .reset_index()
-    )
-    for c in ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]:
-        if c not in tab.columns:
-            tab[c] = 0
-    tab["TOTAL"] = tab["PROCEDENTE"] + tab["IMPROCEDENTE"] + tab["OUTROS"]
-    tab = tab.sort_values("TOTAL", ascending=False)
-
-    # gráfico empilhado (top 15)
-    top = tab.head(15).copy()
-    melted = top.melt(id_vars=[col_estado], value_vars=["PROCEDENTE","IMPROCEDENTE","OUTROS"],
-                      var_name="RESULTADO", value_name="QTD")
-
-    fig = px.bar(
-        melted.sort_values(col_estado),
-        x=col_estado,
-        y="QTD",
-        color="RESULTADO",
-        barmode="stack",
-        text="QTD",
-        template="plotly_dark",
-        color_discrete_map={
-            "PROCEDENTE": COR_PROC,
-            "IMPROCEDENTE": COR_IMP,
-            "OUTROS": COR_OUT,
+        resumo, x="_CLASSE_", y="QTD", text="QTD",
+        color="_CLASSE_", color_discrete_map={
+            "PROCEDENTE": COR_PROC, "IMPROCEDENTE": COR_IMP, "OUTROS": COR_OUT
         }
     )
-    fig.update_layout(height=420, margin=dict(l=10, r=10, t=50, b=10), xaxis_title="", yaxis_title="")
-    fig.update_traces(textposition="outside", cliponaxis=False)
+    st.plotly_chart(fig, use_container_width=True)
+    st.dataframe(resumo, hide_index=True)
 
-    return fig, tab
+# ======================================================
+# TAB 2 — UF
+# ======================================================
+with tabs[1]:
+    st.subheader("Relatório por Estado (UF)")
+    base = classificar_resultado(df_periodo)
 
-def comparativo_anos_proced_improced(df_base_full, col_data, col_estado, uf_filtro):
-    """
-    Compara Procedente/Improcedente por ANO.
-    - uf_filtro = 'TOTAL' -> todos
-    - senão -> filtra UF específica
-    """
-    if df_base_full.empty or col_data is None:
-        return None, None
-
-    base = df_base_full.dropna(subset=[col_data]).copy()
-    if base.empty:
-        return None, None
-
-    base[col_data] = pd.to_datetime(base[col_data], errors="coerce", dayfirst=True)
-    base = base.dropna(subset=[col_data]).copy()
-    if base.empty:
-        return None, None
-
-    if uf_filtro != "TOTAL" and col_estado is not None:
-        base = base[base[col_estado].astype(str).str.upper().str.strip() == str(uf_filtro).upper()].copy()
-        if base.empty:
-            return None, None
-
-    base = _classe_resultado(base)
-    base["ANO"] = base[col_data].dt.year.astype("Int64")
-
-    # mantém só proced/imp
-    base_pi = base[base["_CLASSE_"].isin(["PROCEDENTE","IMPROCEDENTE"])].copy()
-    if base_pi.empty:
-        return None, None
-
-    tab = (
-        base_pi.groupby(["ANO","_CLASSE_"]).size().reset_index(name="QTD")
-        .sort_values(["ANO","_CLASSE_"])
-    )
+    tab = base.pivot_table(
+        index=COL_ESTADO, columns="_CLASSE_", values="_CLASSE_", aggfunc="count", fill_value=0
+    ).reset_index()
 
     fig = px.bar(
-        tab,
-        x="ANO",
-        y="QTD",
-        color="_CLASSE_",
-        barmode="group",
-        text="QTD",
-        template="plotly_dark",
+        tab, x=COL_ESTADO, y=["PROCEDENTE","IMPROCEDENTE","OUTROS"],
+        barmode="stack"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    st.dataframe(tab, use_container_width=True)
+
+# ======================================================
+# TAB 3 — COMPARATIVO ANUAL
+# ======================================================
+with tabs[2]:
+    st.subheader("Comparativo Anual – Procedente x Improcedente")
+
+    base = classificar_resultado(df)
+    base["ANO"] = pd.to_datetime(base[COL_DATA], errors="coerce").dt.year
+
+    comp = base[base["_CLASSE_"].isin(["PROCEDENTE","IMPROCEDENTE"])]
+    comp = comp.groupby(["ANO","_CLASSE_"]).size().reset_index(name="QTD")
+
+    fig = px.bar(
+        comp, x="ANO", y="QTD", color="_CLASSE_", barmode="group",
         color_discrete_map={"PROCEDENTE": COR_PROC, "IMPROCEDENTE": COR_IMP}
     )
-    fig.update_layout(height=360, margin=dict(l=10, r=10, t=50, b=10), xaxis_title="", yaxis_title="")
-    fig.update_traces(textposition="outside", cliponaxis=False)
-
-    return fig, tab
-
-# ======================================================
-# CARD: RELATÓRIOS
-# ======================================================
-st.markdown('<div class="card"><div class="card-title">RELATÓRIOS (ESTADO + COMPARATIVO ANUAL)</div>', unsafe_allow_html=True)
-
-if "show_relatorios_uf_ano" not in st.session_state:
-    st.session_state["show_relatorios_uf_ano"] = False
-
-cB1, cB2 = st.columns([1.2, 3.8], gap="medium")
-with cB1:
-    if st.button("📑 Abrir/Fechar Relatórios"):
-        st.session_state["show_relatorios_uf_ano"] = not st.session_state["show_relatorios_uf_ano"]
-with cB2:
-    st.caption("Tudo respeita o filtro de calendário/semana e a UF selecionada, e o comparativo anual usa a base completa por ano.")
-
-if st.session_state["show_relatorios_uf_ano"]:
-    tab1, tab2 = st.tabs(["📍 Por Estado (UF)", "📅 Comparativo por Ano (Proc x Improc)"])
-
-    with tab1:
-        # usa df_periodo (já filtrado por calendário/semana) e ignora uf_sel para ranking geral
-        fig_uf, tab_uf = relatorio_por_estado(df_periodo, COL_ESTADO, uf_sel)
-        if fig_uf is None:
-            st.info("Sem dados para relatório por UF no período selecionado.")
-        else:
-            fig_uf = _titulo_plotly(fig_uf, "NOTAS POR UF (TOP 15) — Proced/Improc/Outros", "TOTAL")
-            st.plotly_chart(fig_uf, use_container_width=True)
-
-            st.markdown("**Resumo (Tabela)**")
-            st.dataframe(tab_uf, use_container_width=True, hide_index=True)
-
-            csv_bytes = tab_uf.to_csv(index=False).encode("utf-8-sig")
-            st.download_button(
-                "⬇️ Baixar resumo UF (CSV)",
-                data=csv_bytes,
-                file_name=f"resumo_uf_{ano_txt}_periodo.csv",
-                mime="text/csv"
-            )
-
-    with tab2:
-        # comparativo anual sempre usa df (base completa), mas pode filtrar pela UF atual (uf_sel)
-        cX, cY = st.columns([2.0, 1.5], gap="medium")
-        with cX:
-            st.markdown("**Comparativo anual (Procedente x Improcedente)**")
-            st.caption("Usa a base completa (df) para consolidar por ANO. Se quiser, filtre por UF abaixo.")
-        with cY:
-            uf_comp = st.selectbox("Filtrar UF no comparativo anual", options=ufs, index=0 if uf_sel=="TOTAL" else ufs.index(uf_sel), key="uf_comp_anual")
-
-        fig_ano, tab_ano = comparativo_anos_proced_improced(df, COL_DATA, COL_ESTADO, uf_comp)
-        if fig_ano is None:
-            st.info("Sem dados suficientes para comparativo anual (verifique coluna DATA/RESULTADO).")
-        else:
-            fig_ano = _titulo_plotly(fig_ano, f"PROC x IMPROC por ANO", uf_comp)
-            st.plotly_chart(fig_ano, use_container_width=True)
-
-            st.markdown("**Resumo (Tabela)**")
-            st.dataframe(tab_ano, use_container_width=True, hide_index=True)
-
-            csv_bytes2 = tab_ano.to_csv(index=False).encode("utf-8-sig")
-            st.download_button(
-                "⬇️ Baixar comparativo anual (CSV)",
-                data=csv_bytes2,
-                file_name=f"comparativo_anual_{uf_comp}.csv",
-                mime="text/csv"
-            )
+    st.plotly_chart(fig, use_container_width=True)
+    st.dataframe(comp, hide_index=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
+
 
 # ======================================================
 # EXPORTAR DASHBOARD (PRINT PARA PDF) - OPÇÃO A
