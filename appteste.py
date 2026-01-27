@@ -1023,6 +1023,142 @@ st.download_button(
 )
 
 # ======================================================
+# RELATÓRIO POR REGIONAL (NOVO)
+# ======================================================
+
+def _classe_resultado(df_):
+    """Cria coluna _CLASSE_ = PROCEDENTE / IMPROCEDENTE / OUTROS"""
+    d = df_.copy()
+    d["_CLASSE_"] = "OUTROS"
+    d.loc[d["_RES_"].str.contains("PROCED", na=False), "_CLASSE_"] = "PROCEDENTE"
+    d.loc[d["_RES_"].str.contains("IMPROCED", na=False), "_CLASSE_"] = "IMPROCEDENTE"
+    return d
+
+def grafico_regional_resumo(df_base, col_regional, uf):
+    """
+    - Se escolher 1 regional: mostra barras PROCEDENTE/IMPROCEDENTE/OUTROS
+    - Se 'Todas': mostra barras por regional (total), top 15
+    """
+    if df_base.empty or col_regional is None:
+        return None, None, None
+
+    base = df_base.dropna(subset=[col_regional]).copy()
+    if base.empty:
+        return None, None, None
+
+    base[col_regional] = base[col_regional].astype(str).str.upper().str.strip()
+    regionais = sorted(base[col_regional].unique().tolist())
+    opcoes = ["Todas"] + regionais
+
+    cR1, cR2 = st.columns([2.2, 1.0], gap="medium")
+    with cR1:
+        reg_sel = st.selectbox("Regional", opcoes, index=0, key=f"reg_sel_{uf}")
+    with cR2:
+        modo = st.selectbox("Modo do gráfico", ["Por Resultado", "Comparar Regionais"], index=0, key=f"reg_modo_{uf}")
+
+    base = _classe_resultado(base)
+
+    # --------- CASO 1: uma regional -> resultado (proced/imp/outros)
+    if reg_sel != "Todas" and modo == "Por Resultado":
+        rec = base[base[col_regional] == reg_sel].copy()
+        if rec.empty:
+            return None, reg_sel, None
+
+        tab = (
+            rec.groupby("_CLASSE_")
+            .size()
+            .reindex(["PROCEDENTE", "IMPROCEDENTE", "OUTROS"], fill_value=0)
+            .reset_index()
+        )
+        tab.columns = ["RESULTADO", "QTD"]
+
+        fig = px.bar(
+            tab,
+            x="RESULTADO",
+            y="QTD",
+            text="QTD",
+            template="plotly_white"
+        )
+        fig.update_layout(height=320, margin=dict(l=10, r=10, t=50, b=10), showlegend=False)
+        fig.update_traces(textposition="outside", cliponaxis=False)
+
+        return fig, reg_sel, tab
+
+    # --------- CASO 2: comparar regionais (todas ou uma) -> total por regional
+    # (aqui faz mais sentido mostrar ranking de regionais)
+    if reg_sel == "Todas":
+        rec = base.copy()
+    else:
+        rec = base[base[col_regional] == reg_sel].copy()
+
+    if rec.empty:
+        return None, reg_sel, None
+
+    # ranking por regional (total)
+    tab_reg = (
+        rec.groupby(col_regional)
+        .size()
+        .reset_index(name="TOTAL")
+        .sort_values("TOTAL", ascending=False)
+        .head(15)
+    )
+
+    fig = px.bar(
+        tab_reg.sort_values("TOTAL"),
+        x="TOTAL",
+        y=col_regional,
+        orientation="h",
+        text="TOTAL",
+        template="plotly_white"
+    )
+    fig.update_layout(height=420, margin=dict(l=10, r=10, t=50, b=10), showlegend=False)
+    fig.update_traces(textposition="outside", cliponaxis=False)
+    fig.update_yaxes(title_text="")
+
+    return fig, reg_sel, tab_reg
+
+# ======================================================
+# BOTÃO + CARD (NOVO)
+# Coloque este bloco onde você quiser no layout (ex.: após row2)
+# ======================================================
+
+st.markdown('<div class="card"><div class="card-title">RELATÓRIO POR REGIONAL (GRÁFICO)</div>', unsafe_allow_html=True)
+
+# Botão "abrir" (toggle)
+if "show_regional_report" not in st.session_state:
+    st.session_state["show_regional_report"] = False
+
+colBtn, colInfo = st.columns([1.0, 3.0], gap="medium")
+with colBtn:
+    if st.button("📊 Gerar relatório por regional"):
+        st.session_state["show_regional_report"] = not st.session_state["show_regional_report"]
+with colInfo:
+    st.caption("Gera gráfico por Regional dentro do período/UF selecionados.")
+
+if st.session_state["show_regional_report"]:
+    # usa df_filtro (AM+AS) do período atual e UF atual
+    fig_reg, reg_sel, tab_reg = grafico_regional_resumo(df_filtro, COL_REGIONAL, uf_sel)
+
+    if fig_reg is None:
+        st.info("Sem dados de REGIONAL para o filtro atual.")
+    else:
+        # título bonitinho no padrão do seu helper
+        fig_reg = _titulo_plotly(fig_reg, f"RELATÓRIO POR REGIONAL • {reg_sel}", uf_sel)
+        st.plotly_chart(fig_reg, use_container_width=True)
+
+        # download do resumo
+        if tab_reg is not None and not tab_reg.empty:
+            csv_bytes = tab_reg.to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                "⬇️ Baixar resumo (CSV)",
+                data=csv_bytes,
+                file_name=f"regional_{uf_sel}_{ano_txt}_{reg_sel}.csv",
+                mime="text/csv"
+            )
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ======================================================
 # EXPORTAR DASHBOARD (PRINT PARA PDF) - OPÇÃO A
 # ======================================================
 st.markdown("""
