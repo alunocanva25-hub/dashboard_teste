@@ -1159,6 +1159,182 @@ if st.session_state["show_regional_report"]:
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ======================================================
+# RELATÓRIOS (UF + ANO) — NOVO
+# ======================================================
+
+def _classe_resultado(df_):
+    d = df_.copy()
+    d["_CLASSE_"] = "OUTROS"
+    d.loc[d["_RES_"].str.contains("PROCED", na=False), "_CLASSE_"] = "PROCEDENTE"
+    d.loc[d["_RES_"].str.contains("IMPROCED", na=False), "_CLASSE_"] = "IMPROCEDENTE"
+    return d
+
+def relatorio_por_estado(df_base, col_estado, uf_atual):
+    """Mostra ranking de UFs e um gráfico empilhado (Procedente/Improcedente/Outros) por UF."""
+    if df_base.empty or col_estado is None:
+        return None, None
+
+    base = df_base.dropna(subset=[col_estado]).copy()
+    if base.empty:
+        return None, None
+
+    base[col_estado] = base[col_estado].astype(str).str.upper().str.strip()
+    base = _classe_resultado(base)
+
+    # tabela pivot: UF x classe
+    tab = (
+        base.pivot_table(index=col_estado, columns="_CLASSE_", values="_CLASSE_", aggfunc="count", fill_value=0)
+        .reset_index()
+    )
+    for c in ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]:
+        if c not in tab.columns:
+            tab[c] = 0
+    tab["TOTAL"] = tab["PROCEDENTE"] + tab["IMPROCEDENTE"] + tab["OUTROS"]
+    tab = tab.sort_values("TOTAL", ascending=False)
+
+    # gráfico empilhado (top 15)
+    top = tab.head(15).copy()
+    melted = top.melt(id_vars=[col_estado], value_vars=["PROCEDENTE","IMPROCEDENTE","OUTROS"],
+                      var_name="RESULTADO", value_name="QTD")
+
+    fig = px.bar(
+        melted.sort_values(col_estado),
+        x=col_estado,
+        y="QTD",
+        color="RESULTADO",
+        barmode="stack",
+        text="QTD",
+        template="plotly_dark",
+        color_discrete_map={
+            "PROCEDENTE": COR_PROC,
+            "IMPROCEDENTE": COR_IMP,
+            "OUTROS": COR_OUT,
+        }
+    )
+    fig.update_layout(height=420, margin=dict(l=10, r=10, t=50, b=10), xaxis_title="", yaxis_title="")
+    fig.update_traces(textposition="outside", cliponaxis=False)
+
+    return fig, tab
+
+def comparativo_anos_proced_improced(df_base_full, col_data, col_estado, uf_filtro):
+    """
+    Compara Procedente/Improcedente por ANO.
+    - uf_filtro = 'TOTAL' -> todos
+    - senão -> filtra UF específica
+    """
+    if df_base_full.empty or col_data is None:
+        return None, None
+
+    base = df_base_full.dropna(subset=[col_data]).copy()
+    if base.empty:
+        return None, None
+
+    base[col_data] = pd.to_datetime(base[col_data], errors="coerce", dayfirst=True)
+    base = base.dropna(subset=[col_data]).copy()
+    if base.empty:
+        return None, None
+
+    if uf_filtro != "TOTAL" and col_estado is not None:
+        base = base[base[col_estado].astype(str).str.upper().str.strip() == str(uf_filtro).upper()].copy()
+        if base.empty:
+            return None, None
+
+    base = _classe_resultado(base)
+    base["ANO"] = base[col_data].dt.year.astype("Int64")
+
+    # mantém só proced/imp
+    base_pi = base[base["_CLASSE_"].isin(["PROCEDENTE","IMPROCEDENTE"])].copy()
+    if base_pi.empty:
+        return None, None
+
+    tab = (
+        base_pi.groupby(["ANO","_CLASSE_"]).size().reset_index(name="QTD")
+        .sort_values(["ANO","_CLASSE_"])
+    )
+
+    fig = px.bar(
+        tab,
+        x="ANO",
+        y="QTD",
+        color="_CLASSE_",
+        barmode="group",
+        text="QTD",
+        template="plotly_dark",
+        color_discrete_map={"PROCEDENTE": COR_PROC, "IMPROCEDENTE": COR_IMP}
+    )
+    fig.update_layout(height=360, margin=dict(l=10, r=10, t=50, b=10), xaxis_title="", yaxis_title="")
+    fig.update_traces(textposition="outside", cliponaxis=False)
+
+    return fig, tab
+
+# ======================================================
+# CARD: RELATÓRIOS
+# ======================================================
+st.markdown('<div class="card"><div class="card-title">RELATÓRIOS (ESTADO + COMPARATIVO ANUAL)</div>', unsafe_allow_html=True)
+
+if "show_relatorios_uf_ano" not in st.session_state:
+    st.session_state["show_relatorios_uf_ano"] = False
+
+cB1, cB2 = st.columns([1.2, 3.8], gap="medium")
+with cB1:
+    if st.button("📑 Abrir/Fechar Relatórios"):
+        st.session_state["show_relatorios_uf_ano"] = not st.session_state["show_relatorios_uf_ano"]
+with cB2:
+    st.caption("Tudo respeita o filtro de calendário/semana e a UF selecionada, e o comparativo anual usa a base completa por ano.")
+
+if st.session_state["show_relatorios_uf_ano"]:
+    tab1, tab2 = st.tabs(["📍 Por Estado (UF)", "📅 Comparativo por Ano (Proc x Improc)"])
+
+    with tab1:
+        # usa df_periodo (já filtrado por calendário/semana) e ignora uf_sel para ranking geral
+        fig_uf, tab_uf = relatorio_por_estado(df_periodo, COL_ESTADO, uf_sel)
+        if fig_uf is None:
+            st.info("Sem dados para relatório por UF no período selecionado.")
+        else:
+            fig_uf = _titulo_plotly(fig_uf, "NOTAS POR UF (TOP 15) — Proced/Improc/Outros", "TOTAL")
+            st.plotly_chart(fig_uf, use_container_width=True)
+
+            st.markdown("**Resumo (Tabela)**")
+            st.dataframe(tab_uf, use_container_width=True, hide_index=True)
+
+            csv_bytes = tab_uf.to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                "⬇️ Baixar resumo UF (CSV)",
+                data=csv_bytes,
+                file_name=f"resumo_uf_{ano_txt}_periodo.csv",
+                mime="text/csv"
+            )
+
+    with tab2:
+        # comparativo anual sempre usa df (base completa), mas pode filtrar pela UF atual (uf_sel)
+        cX, cY = st.columns([2.0, 1.5], gap="medium")
+        with cX:
+            st.markdown("**Comparativo anual (Procedente x Improcedente)**")
+            st.caption("Usa a base completa (df) para consolidar por ANO. Se quiser, filtre por UF abaixo.")
+        with cY:
+            uf_comp = st.selectbox("Filtrar UF no comparativo anual", options=ufs, index=0 if uf_sel=="TOTAL" else ufs.index(uf_sel), key="uf_comp_anual")
+
+        fig_ano, tab_ano = comparativo_anos_proced_improced(df, COL_DATA, COL_ESTADO, uf_comp)
+        if fig_ano is None:
+            st.info("Sem dados suficientes para comparativo anual (verifique coluna DATA/RESULTADO).")
+        else:
+            fig_ano = _titulo_plotly(fig_ano, f"PROC x IMPROC por ANO", uf_comp)
+            st.plotly_chart(fig_ano, use_container_width=True)
+
+            st.markdown("**Resumo (Tabela)**")
+            st.dataframe(tab_ano, use_container_width=True, hide_index=True)
+
+            csv_bytes2 = tab_ano.to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                "⬇️ Baixar comparativo anual (CSV)",
+                data=csv_bytes2,
+                file_name=f"comparativo_anual_{uf_comp}.csv",
+                mime="text/csv"
+            )
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ======================================================
 # EXPORTAR DASHBOARD (PRINT PARA PDF) - OPÇÃO A
 # ======================================================
 st.markdown("""
