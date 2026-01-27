@@ -23,6 +23,124 @@ st.markdown("""
 .stApp { background: #6fa6d6; }
 .block-container{ padding-top: 0.6rem; max-width: 1500px; }
 
+/* ======================================================
+   LOGIN (apenas quando .login-mode estiver ativo)
+   ====================================================== */
+.stApp.login-mode .block-container{
+  max-width: 980px !important;
+  padding-top: 20px !important;
+}
+.stApp.login-mode header, 
+.stApp.login-mode footer, 
+.stApp.login-mode [data-testid="stSidebar"], 
+.stApp.login-mode [data-testid="stToolbar"]{
+  display:none !important;
+}
+
+/* container central */
+.login-shell{
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  padding: 12px 0 0 0;
+}
+.login-card{
+  width: min(980px, 94vw);
+  border-radius: 26px;
+  overflow: hidden;
+  box-shadow: 0 16px 28px rgba(0,0,0,0.28);
+  border: 2px solid rgba(10,40,70,0.20);
+}
+
+/* topo */
+.login-head{
+  padding: 22px 26px 18px 26px;
+  background: #2f6f8c;
+}
+.login-title{
+  display:flex; align-items:center; gap:12px;
+  font-weight: 950;
+  color:#ffffff;
+  font-size: 34px;
+  line-height: 1;
+}
+.login-sub{
+  margin-top: 8px;
+  color: rgba(255,255,255,0.92);
+  font-weight: 800;
+  font-size: 16px;
+}
+
+/* faixa clara abaixo do topo */
+.login-band{
+  height: 46px;
+  background: rgba(255,255,255,0.35);
+}
+
+/* corpo */
+.login-body{
+  padding: 26px 22px 10px 22px;
+  background: transparent;
+}
+
+/* Inputs do Streamlit (somente em login-mode) */
+.stApp.login-mode div[data-testid="stTextInput"]{
+  margin-bottom: 10px;
+}
+.stApp.login-mode div[data-testid="stTextInput"] input{
+  height: 44px !important;
+  border-radius: 10px !important;
+  background: #15181c !important;
+  border: 1px solid rgba(255,255,255,0.18) !important;
+  color: #ffffff !important;
+  font-weight: 900 !important;
+  font-size: 16px !important;
+}
+.stApp.login-mode div[data-testid="stTextInput"] input::placeholder{
+  color: rgba(255,255,255,0.45) !important;
+  font-weight: 800 !important;
+}
+
+/* alinha o "olhinho" do password com o campo */
+.stApp.login-mode div[data-testid="stTextInput"] svg{
+  color: rgba(255,255,255,0.75) !important;
+}
+
+/* Botões do login */
+.stApp.login-mode div.stButton > button{
+  border-radius: 10px !important;
+  font-weight: 900 !important;
+  border: 2px solid rgba(10,40,70,0.22) !important;
+  background: rgba(255,255,255,0.55) !important;
+  color:#0b2b45 !important;
+  padding: .30rem .90rem !important;
+}
+.stApp.login-mode div.stButton > button:hover{
+  background: rgba(255,255,255,0.75) !important;
+  border-color: rgba(10,40,70,0.35) !important;
+}
+
+/* rodapé do login */
+.login-foot{
+  text-align:center;
+  padding: 10px 0 16px 0;
+  font-weight: 900;
+  color: rgba(11,43,69,0.92);
+  font-size: 12px;
+}
+.login-foot .ok{
+  display:inline-flex; align-items:center; gap:8px;
+}
+.login-foot .dot{
+  width: 12px; height: 12px;
+  border-radius: 3px;
+  background: #2e7d32;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.35) inset;
+}
+
+/* ======================================================
+   DASHBOARD (o que já existia)
+   ====================================================== */
 .card{
   background: #b9d3ee;
   border: 2px solid rgba(10,40,70,0.30);
@@ -145,24 +263,90 @@ div[data-baseweb="segmented-control"] div[aria-checked="true"] span{
 """, unsafe_allow_html=True)
 
 # ======================================================
-# LOGIN
+# LOGIN (ALTERADO para ficar igual ao da imagem)
 # ======================================================
+def _set_login_mode(on: bool):
+    # adiciona/remove a classe no DOM do Streamlit (para scoping do CSS)
+    if on:
+        components.html("""
+        <script>
+          const app = window.parent.document.querySelector('.stApp');
+          if (app) app.classList.add('login-mode');
+        </script>
+        """, height=0)
+    else:
+        components.html("""
+        <script>
+          const app = window.parent.document.querySelector('.stApp');
+          if (app) app.classList.remove('login-mode');
+        </script>
+        """, height=0)
+
 def tela_login():
-    st.markdown("## 🔐 Acesso Restrito")
-    usuario = st.text_input("Usuário")
-    senha = st.text_input("Senha", type="password")
-    if st.button("Entrar"):
+    _set_login_mode(True)
+
+    # cabeçalho igual ao layout da imagem
+    st.markdown("""
+    <div class="login-shell">
+      <div class="login-card">
+        <div class="login-head">
+          <div class="login-title">🔐&nbsp;Acesso Restrito</div>
+          <div class="login-sub">Torpedo Semanal • Produtividade</div>
+        </div>
+        <div class="login-band"></div>
+        <div class="login-body">
+    """, unsafe_allow_html=True)
+
+    # inputs (labels colapsadas + placeholder)
+    usuario = st.text_input(
+        label="Usuário",
+        placeholder="Digite seu usuário",
+        key="login_user",
+        label_visibility="collapsed",
+    )
+    senha = st.text_input(
+        label="Senha",
+        placeholder="Digite sua senha",
+        type="password",
+        key="login_pass",
+        label_visibility="collapsed",
+    )
+
+    c1, c2, c3 = st.columns([1, 1, 6])
+    with c1:
+        entrar = st.button("Entrar", key="btn_entrar")
+    with c2:
+        limpar = st.button("Limpar", key="btn_limpar")
+
+    if limpar:
+        st.session_state["login_user"] = ""
+        st.session_state["login_pass"] = ""
+        st.rerun()
+
+    if entrar:
         if usuario == st.secrets["auth"]["usuario"] and senha == st.secrets["auth"]["senha"]:
             st.session_state["logado"] = True
             st.rerun()
         else:
             st.error("Usuário ou senha inválidos")
 
+    st.markdown("""
+        </div>
+        <div class="login-foot">
+          <span class="ok"><span class="dot"></span>Segurança via st.secrets</span>
+        </div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
+
 if not st.session_state["logado"]:
     tela_login()
     st.stop()
+else:
+    _set_login_mode(False)
 
 # ======================================================
 # TOPO
@@ -221,9 +405,6 @@ def validar_estrutura(df):
         st.stop()
 
 def _extrair_drive_id(url: str):
-    # formatos comuns de links do Drive:
-    # https://drive.google.com/uc?id=FILEID
-    # https://drive.google.com/file/d/FILEID/view?usp=sharing
     m = re.search(r"[?&]id=([a-zA-Z0-9-_]+)", url)
     if m:
         return m.group(1)
@@ -233,11 +414,6 @@ def _extrair_drive_id(url: str):
     return None
 
 def _drive_direct_download(url: str) -> str:
-    """
-    Converte link do Google Drive para link de download direto.
-    - Se já for uc?id=... mantém.
-    - Se for /file/d/... converte para uc?id=...
-    """
     did = _extrair_drive_id(url)
     if did:
         return f"https://drive.google.com/uc?id={did}"
@@ -248,19 +424,11 @@ def _bytes_is_html(raw: bytes) -> bool:
     return head.startswith(b"<!doctype html") or b"<html" in head
 
 def _bytes_is_xlsx(raw: bytes) -> bool:
-    # XLSX é um ZIP: começa com "PK"
     return raw[:2] == b"PK"
 
 @st.cache_data(ttl=600, show_spinner="🔄 Carregando base (XLSX/CSV)...")
 def carregar_base(url_original: str) -> pd.DataFrame:
-    """
-    Carrega base do Google Drive (preferencialmente XLSX).
-    - Se a resposta vier como XLSX, lê via pd.read_excel(engine='openpyxl')
-    - Se vier como CSV, lê via pd.read_csv com detecção de encoding
-    - Se vier HTML, mostra erro de permissão/link
-    """
     url = _drive_direct_download(url_original)
-
     r = requests.get(url, timeout=60)
     r.raise_for_status()
     raw = r.content
@@ -268,14 +436,11 @@ def carregar_base(url_original: str) -> pd.DataFrame:
     if _bytes_is_html(raw):
         raise RuntimeError("URL retornou HTML (provável permissão/link). No Drive: 'Qualquer pessoa com o link' (Visualizador).")
 
-    # ✅ Preferência: XLSX
     if _bytes_is_xlsx(raw):
-        # Se quiser escolher aba, troque sheet_name (ex.: 0 ou "Plan1")
         df = pd.read_excel(BytesIO(raw), sheet_name=0, engine="openpyxl")
         df.columns = df.columns.astype(str).str.upper().str.strip()
         return df
 
-    # fallback: CSV
     for enc in ["utf-8-sig", "utf-8", "cp1252", "latin1"]:
         try:
             df = pd.read_csv(BytesIO(raw), sep=None, engine="python", encoding=enc)
@@ -347,13 +512,10 @@ def barh_contagem(df_base, col_dim, titulo, uf):
         showlegend=False,
     )
 
-    # 🔥 Oculta eixo X (escala) — mantém apenas os valores nas barras
     fig.update_xaxes(visible=False, showticklabels=False, ticks="", showgrid=False, zeroline=False)
-
     fig.update_traces(textposition="outside", cliponaxis=False)
     fig.update_yaxes(title_text="")
 
-    # ✅ TOTAL DO GRÁFICO (único)
     fig.add_annotation(
         xref="paper", yref="paper",
         x=0.98, y=1.12,
@@ -373,9 +535,6 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     if base.empty:
         return None, None
 
-    # =========================
-    # Preparação dos dados
-    # =========================
     base["MES_NUM"] = base[col_data].dt.month
     base["MÊS"] = base["MES_NUM"].map(MESES_PT)
 
@@ -385,18 +544,12 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
 
     classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
 
-    # =========================
-    # Contagem bruta por mês/classe
-    # =========================
     dados_raw = (
         base.groupby(["MES_NUM", "MÊS", "_CLASSE_"])
         .size()
         .reset_index(name="QTD")
     )
 
-    # =========================
-    # Garante 12 meses + todas classes (para não “sumir” mês sem dado)
-    # =========================
     meses_df = pd.DataFrame({"MES_NUM": list(range(1, 13))})
     meses_df["MÊS"] = meses_df["MES_NUM"].map(MESES_PT)
 
@@ -412,11 +565,8 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     )
     dados["QTD"] = dados["QTD"].astype(int)
 
-    # =========================
-    # Percentuais (labels nas barras)
-    # =========================
     total_mes = dados.groupby("MES_NUM")["QTD"].transform("sum")
-    denom = total_mes.replace(0, 1)  # evita divisão por zero em meses zerados
+    denom = total_mes.replace(0, 1)
     dados["PCT"] = ((dados["QTD"] / denom) * 100).round(0).astype(int)
 
     dados["LABEL"] = ""
@@ -425,9 +575,6 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     dados.loc[mask_p, "LABEL"] = dados.loc[mask_p, "PCT"].astype(str) + "%"
     dados.loc[mask_i, "LABEL"] = dados.loc[mask_i, "PCT"].astype(str) + "%"
 
-    # =========================
-    # Tabela (valores por mês)
-    # =========================
     tab = (
         dados.pivot_table(
             index=["MES_NUM", "MÊS"],
@@ -447,9 +594,6 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     tab["TOTAL"] = tab["PROCEDENTE"] + tab["IMPROCEDENTE"] + tab["OUTROS"]
     tabela_final = tab[["MÊS", "IMPROCEDENTE", "PROCEDENTE", "TOTAL"]].copy()
 
-    # =========================
-    # Gráfico principal (barras)
-    # =========================
     fig = px.bar(
         dados.sort_values("MES_NUM"),
         x="MÊS",
@@ -470,38 +614,23 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
     )
 
     fig.update_traces(textposition="outside", cliponaxis=False)
-
-    # 🔥 Remove eixo Y (lado esquerdo)
     fig.update_yaxes(visible=False, showgrid=False, zeroline=False, showticklabels=False, title_text="")
 
-    # =========================
-    # Layout (b grande para caber a “tabelinha”)
-    # =========================
     fig.update_layout(
         height=520,
-        showlegend=False,  # vamos usar “boquinhas”
+        showlegend=False,
         margin=dict(l=120, r=170, t=50, b=190),
         xaxis_title="",
         yaxis_title="",
     )
 
-    # =====================================================
-    # CONTROLES (posição da tabelinha e espaçamentos)
-    # =====================================================
     def _fmt_int(v: int) -> str:
         return f"{int(v):,}".replace(",", ".")
 
-    # ✅ (AJUSTE AQUI)
-    # - y_base: sobe/desce a tabelinha e as boquinhas
-    # - dy: espaçamento entre as 3 linhas (você pediu 0.055)
     y_base = -0.23
     dy = 0.055
 
-    # =====================================================
-    # LINHAS-GUIA (estilo tabela) — 3 linhas horizontais
-    # =====================================================
     line_style = dict(color="rgba(255,255,255,0.25)", width=1)
-
     for k in range(3):
         y_line = y_base - (k * dy)
         fig.add_shape(
@@ -510,9 +639,6 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
             line=line_style
         )
 
-    # =====================================================
-    # “TABELINHA” abaixo de cada mês (só números, cores)
-    # =====================================================
     for _, r in tab.iterrows():
         mes = r["MÊS"]
         p = _fmt_int(r["PROCEDENTE"])
@@ -538,14 +664,8 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
             showarrow=False, align="center",
         )
 
-    # =====================================================
-    # LEGENDA “boquinhas” (alinhada com a tabelinha)
-    # =====================================================
-    # ✅ (AJUSTE AQUI)
-    # - x_leg: mais negativo = mais para esquerda
-    # - y_leg: sobe/desce (use junto com y_base para alinhar perfeito)
     x_leg = -0.08
-    y_leg = y_base  # mesma altura da linha verde
+    y_leg = y_base
 
     fig.add_annotation(
         xref="paper", yref="paper",
@@ -569,9 +689,6 @@ def acumulado_mensal_fig_e_tabela(df_base, col_data):
         showarrow=False, align="left",
     )
 
-    # =====================================================
-    # TOTAL GERAL (quadrado à direita) - 3 linhas (TOTAL / PROCEDENTE / IMPROCEDENTE)
-    # =====================================================
     total_geral = int(tab["TOTAL"].sum())
     total_proc  = int(tab["PROCEDENTE"].sum())
     total_imp   = int(tab["IMPROCEDENTE"].sum())
@@ -639,7 +756,6 @@ with colB:
 # ======================================================
 # CARREGAMENTO (XLSX no Drive)
 # ======================================================
-# ⚠️ Use o link do Drive do arquivo XLSX (qualquer pessoa com o link - visualizador)
 URL_BASE = "https://drive.google.com/uc?id=1VadynN01W4mNRLfq8ABZAaQP8Sfim5tb"
 
 df = carregar_base(URL_BASE)
@@ -658,7 +774,6 @@ df["_RES_"]  = df[COL_RESULTADO].astype(str).str.upper().str.strip()
 
 # ======================================================
 # SELETORES (Ano • Mensal/Semanal • Calendário • Semana)
-# - Semana: segunda a sexta (ISO week)
 # ======================================================
 anos_disponiveis = sorted(df[COL_DATA].dropna().dt.year.unique().astype(int).tolist())
 ano_padrao = anos_disponiveis[-1] if anos_disponiveis else None
@@ -709,17 +824,15 @@ with c_sel4:
         opcoes_sem = ["Todas"] + [f"S{w:02d}" for w in semanas_disp]
         semana_sel = st.selectbox("Semana (S01..S53)", opcoes_sem, index=0, key="semana_sel")
 
-# aplica filtro semanal (ISO seg(1) a sex(5))
 if modo_periodo == "Semanal" and semana_sel and semana_sel != "Todas" and ano_sel is not None:
     w = int(str(semana_sel).replace("S", ""))
     try:
-        data_ini = date.fromisocalendar(int(ano_sel), w, 1)  # segunda
-        data_fim = date.fromisocalendar(int(ano_sel), w, 5)  # sexta
+        data_ini = date.fromisocalendar(int(ano_sel), w, 1)
+        data_fim = date.fromisocalendar(int(ano_sel), w, 5)
         st.caption(f"Semana {semana_sel}: {data_ini.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')} (seg–sex)")
     except ValueError:
         st.warning("Semana inválida para este ano (ISO). Usando o filtro por calendário.")
 
-# aplica filtro por calendário (inclusive)
 df_periodo = df_ano.copy()
 if not df_periodo.empty and df_periodo[COL_DATA].notna().any():
     _dini = pd.to_datetime(data_ini)
