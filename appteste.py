@@ -1376,7 +1376,7 @@ if st.session_state.show_relatorios:
                 fig.update_layout(margin=dict(l=10, r=180, t=30, b=80))
 
                 # posição do box (UF)
-                BOX_X_UF = 1.18  # <-- mova p/ direita/esquerda
+                BOX_X_UF = 1.05  # <-- mova p/ direita/esquerda
                 BOX_Y_UF = 0.98  # <-- mova p/ cima/baixo
 
                 # ✅ quadro (soma do recorte Top N)
@@ -1499,7 +1499,7 @@ if st.session_state.show_relatorios:
                     fig.update_layout(margin=dict(l=10, r=220, t=30, b=80))
 
                     # posição do box (ANUAL)
-                    BOX_X_ANO = 1.22  # <-- aumente (1.30) para ir mais à direita; diminua (1.05) para esquerda
+                    BOX_X_ANO = 1.05  # <-- aumente (1.30) para ir mais à direita; diminua (1.05) para esquerda
                     BOX_Y_ANO = 0.98  # <-- aumente para subir; diminua para descer
 
                     proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
