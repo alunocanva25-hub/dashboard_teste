@@ -1662,147 +1662,152 @@ if st.session_state.show_relatorios:
                     st.dataframe(resumo, hide_index=True, use_container_width=True)
 
     # ==================================================
-    # TAB 5 — DEMANDA x DEMANDAS (GERAL)
-    # (DEMANDA = COL_DEMANDA -> "DEMANDA SOLICITADA")
-    # - QTD dentro
-    # - % em cima (participação do TOTAL da demanda no total geral do recorte)
-    # - legenda embaixo
-    # - quadro na direita (padrão)
-    # ==================================================
-    with tab_demanda:
-        st.subheader("Demanda x Demandas (Geral) — DEMANDA SOLICITADA")
+# TAB 5 — DEMANDA x DEMANDAS (GERAL)
+# (DEMANDA = "DEMANDA SOLICITADA")
+# - QTD dentro
+# - % em cima
+# - legenda embaixo
+# - quadro na direita (padrão)
+# ==================================================
+with tab_demanda:
+    st.subheader("Demanda x Demandas (Geral) — DEMANDA SOLICITADA")
 
-        if not _col_ok(COL_DEMANDA):
-            st.warning("Coluna 'DEMANDA SOLICITADA' não encontrada.")
+    # ✅ Define a coluna aqui dentro (evita NameError)
+    COL_DEMANDA_LOCAL = achar_coluna(df, ["DEMANDA SOLICITADA", "DEMANDA_SOLICITADA", "DEMANDA"])
+
+    if not _col_ok(COL_DEMANDA_LOCAL):
+        st.warning("Coluna 'DEMANDA SOLICITADA' não encontrada na base.")
+    else:
+        base = df_periodo.copy()
+        base = base.dropna(subset=[COL_DEMANDA_LOCAL]).copy()
+
+        if base.empty:
+            st.info("Sem dados no período.")
         else:
-            base = df_periodo.copy()
-            base = base.dropna(subset=[COL_DEMANDA]).copy()
+            base = _classificar(base)
+            base["DEMANDA"] = _norm(base[COL_DEMANDA_LOCAL])
 
-            if base.empty:
-                st.info("Sem dados no período.")
+            top_n = st.slider("Top N demandas", 3, 60, 15, key="dem_topn")
+            top = (
+                base.groupby("DEMANDA")
+                .size()
+                .sort_values(ascending=False)
+                .head(top_n)
+                .index
+                .tolist()
+            )
+            base = base[base["DEMANDA"].isin(top)].copy()
+
+            tab = (
+                base.groupby(["DEMANDA", "_CLASSE_"])
+                .size()
+                .reset_index(name="QTD")
+            )
+
+            if tab.empty:
+                st.info("Sem dados para demandas.")
             else:
-                base = _classificar(base)
-                base["DEMANDA"] = _norm(base[COL_DEMANDA])
+                classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
 
-                top_n = st.slider("Top N demandas", 3, 40, 12, key="dem_topn")
-                top = (
-                    base.groupby("DEMANDA")
-                    .size()
-                    .sort_values(ascending=False)
-                    .head(top_n)
-                    .index
-                    .tolist()
+                # garante 3 classes por demanda
+                grid = (
+                    pd.DataFrame({"DEMANDA": top}).assign(_k=1)
+                    .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
+                    .drop(columns="_k")
                 )
-                base = base[base["DEMANDA"].isin(top)].copy()
-
                 tab = (
-                    base.groupby(["DEMANDA", "_CLASSE_"])
-                    .size()
-                    .reset_index(name="QTD")
+                    grid.merge(tab, on=["DEMANDA", "_CLASSE_"], how="left")
+                    .fillna({"QTD": 0})
+                )
+                tab["QTD"] = tab["QTD"].astype(int)
+
+                # total por demanda (para % de composição na tabela)
+                total_dem = tab.groupby("DEMANDA")["QTD"].transform("sum").replace(0, 1)
+                tab["PCT_COMP"] = (tab["QTD"] / total_dem * 100).round(1)
+
+                # total por demanda (para % em cima do gráfico: participação no total geral do recorte)
+                tot_por_dem = tab.groupby("DEMANDA")["QTD"].sum().reset_index(name="TOTAL_DEMANDA")
+                total_geral = int(tot_por_dem["TOTAL_DEMANDA"].sum()) or 1
+                tot_por_dem["PCT_TOTAL"] = (tot_por_dem["TOTAL_DEMANDA"] / total_geral * 100).round(1)
+
+                # QTD dentro
+                tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+
+                fig = px.bar(
+                    tab,
+                    x="DEMANDA",
+                    y="QTD",
+                    color="_CLASSE_",
+                    barmode="stack",
+                    template="plotly_dark",
+                    category_orders={"_CLASSE_": classes},
+                    color_discrete_map={
+                        "PROCEDENTE": COR_PROC,
+                        "IMPROCEDENTE": COR_IMP,
+                        "OUTROS": COR_OUT,
+                    },
                 )
 
-                if tab.empty:
-                    st.info("Sem dados para demandas.")
-                else:
-                    classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
+                fig.update_traces(
+                    text=tab["TXT_QTD"],
+                    textposition="inside",
+                    insidetextanchor="middle",
+                    cliponaxis=False
+                )
 
-                    # garante 3 classes por demanda
-                    grid = (
-                        pd.DataFrame({"DEMANDA": top}).assign(_k=1)
-                        .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
-                        .drop(columns="_k")
-                    )
-                    tab = (
-                        grid.merge(tab, on=["DEMANDA", "_CLASSE_"], how="left")
-                        .fillna({"QTD": 0})
-                    )
-                    tab["QTD"] = tab["QTD"].astype(int)
+                # % em cima do TOTAL da DEMANDA (participação no total geral do recorte)
+                y_max = int(tot_por_dem["TOTAL_DEMANDA"].max()) if int(tot_por_dem["TOTAL_DEMANDA"].max()) > 0 else 1
+                pad = y_max * 0.04
+                fig.add_scatter(
+                    x=tot_por_dem["DEMANDA"],
+                    y=tot_por_dem["TOTAL_DEMANDA"].astype(float) + pad,
+                    mode="text",
+                    text=[f"{p:.1f}%" for p in tot_por_dem["PCT_TOTAL"]],
+                    textposition="middle center",
+                    showlegend=False,
+                    textfont=dict(size=11, family="Arial Black", color="white"),
+                    hoverinfo="skip",
+                )
 
-                    # total por demanda (para % de composição na tabela)
-                    total_dem = tab.groupby("DEMANDA")["QTD"].transform("sum").replace(0, 1)
-                    tab["PCT_COMP"] = (tab["QTD"] / total_dem * 100).round(1)
+                fig = _style_clean(fig)
+                fig = _legend_bottom(fig, y=-0.22)
+                fig.update_layout(margin=dict(l=10, r=180, t=30, b=80))
 
-                    # total por demanda (para % em cima do gráfico: participação no total geral)
-                    tot_por_dem = (
-                        tab.groupby("DEMANDA")["QTD"].sum().reset_index(name="TOTAL_DEMANDA")
-                    )
-                    total_geral = int(tot_por_dem["TOTAL_DEMANDA"].sum()) or 1
-                    tot_por_dem["PCT_TOTAL"] = (tot_por_dem["TOTAL_DEMANDA"] / total_geral * 100).round(1)
+                # === POSIÇÃO DO QUADRO (DEMANDA) ===
+                BOX_X_DEM = 1.18  # (->) maior = mais DIREITA | menor = mais ESQUERDA
+                BOX_Y_DEM = 0.98  # (^) maior = mais CIMA    | menor = mais BAIXO
 
-                    # QTD dentro
-                    tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+                # quadro (total do recorte top N)
+                proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
+                improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
+                outros_total = int(tab.loc[tab["_CLASSE_"] == "OUTROS", "QTD"].sum())
+                total_geral2 = proc_total + improc_total + outros_total
 
-                    fig = px.bar(
-                        tab,
-                        x="DEMANDA",
-                        y="QTD",
-                        color="_CLASSE_",
-                        barmode="stack",
-                        template="plotly_dark",
-                        category_orders={"_CLASSE_": classes},
-                        color_discrete_map={
-                            "PROCEDENTE": COR_PROC,
-                            "IMPROCEDENTE": COR_IMP,
-                            "OUTROS": COR_OUT,
-                        },
-                    )
+                fig = _add_summary_box(
+                    fig,
+                    proc_total, improc_total, outros_total, total_geral2,
+                    box_x=BOX_X_DEM, box_y=BOX_Y_DEM
+                )
 
-                    fig.update_traces(
-                        text=tab["TXT_QTD"],
-                        textposition="inside",
-                        insidetextanchor="middle",
-                        cliponaxis=False
-                    )
+                st.plotly_chart(fig, use_container_width=True)
 
-                    # % EM CIMA DO TOTAL DA DEMANDA (participação no total geral)
-                    y_max = int(tot_por_dem["TOTAL_DEMANDA"].max()) if int(tot_por_dem["TOTAL_DEMANDA"].max()) > 0 else 1
-                    pad = y_max * 0.04
-                    fig.add_scatter(
-                        x=tot_por_dem["DEMANDA"],
-                        y=tot_por_dem["TOTAL_DEMANDA"].astype(float) + pad,
-                        mode="text",
-                        text=[f"{p:.1f}%" for p in tot_por_dem["PCT_TOTAL"]],
-                        textposition="middle center",
-                        showlegend=False,
-                        textfont=dict(size=11, family="Arial Black", color="white"),
-                        hoverinfo="skip",
-                    )
+                # tabela final (composição interna por demanda)
+                piv = (
+                    tab.pivot_table(index="DEMANDA", columns="_CLASSE_", values="QTD", aggfunc="sum", fill_value=0)
+                    .reset_index()
+                )
+                for c in classes:
+                    if c not in piv.columns:
+                        piv[c] = 0
+                piv["TOTAL"] = piv["PROCEDENTE"] + piv["IMPROCEDENTE"] + piv["OUTROS"]
 
-                    fig = _style_clean(fig)
-                    fig = _legend_bottom(fig, y=-0.22)
-                    fig.update_layout(margin=dict(l=10, r=180, t=30, b=80))
+                den = piv["TOTAL"].replace(0, 1)
+                piv["%PROCEDENTE"] = (piv["PROCEDENTE"] / den * 100).round(1)
+                piv["%IMPROCEDENTE"] = (piv["IMPROCEDENTE"] / den * 100).round(1)
+                piv["%OUTROS"] = (piv["OUTROS"] / den * 100).round(1)
 
-                    # === POSIÇÃO DO QUADRO (DEMANDA) ===
-                    BOX_X_DEM = 1.18  # (->) maior = mais DIREITA | menor = mais ESQUERDA
-                    BOX_Y_DEM = 0.98  # (^) maior = mais CIMA    | menor = mais BAIXO
+                st.dataframe(piv, hide_index=True, use_container_width=True)
 
-                    # quadro (total do recorte top N)
-                    proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
-                    improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
-                    outros_total = int(tab.loc[tab["_CLASSE_"] == "OUTROS", "QTD"].sum())
-                    total_geral2 = proc_total + improc_total + outros_total
-                    fig = _add_summary_box(fig, proc_total, improc_total, outros_total, total_geral2, box_x=BOX_X_DEM, box_y=BOX_Y_DEM)
-
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    # tabela final (composição interna por demanda)
-                    piv = (
-                        tab.pivot_table(index="DEMANDA", columns="_CLASSE_", values="QTD", aggfunc="sum", fill_value=0)
-                        .reset_index()
-                    )
-                    for c in classes:
-                        if c not in piv.columns:
-                            piv[c] = 0
-                    piv["TOTAL"] = piv["PROCEDENTE"] + piv["IMPROCEDENTE"] + piv["OUTROS"]
-
-                    den = piv["TOTAL"].replace(0, 1)
-                    piv["%PROCEDENTE"] = (piv["PROCEDENTE"] / den * 100).round(1)
-                    piv["%IMPROCEDENTE"] = (piv["IMPROCEDENTE"] / den * 100).round(1)
-                    piv["%OUTROS"] = (piv["OUTROS"] / den * 100).round(1)
-
-                    st.dataframe(piv, hide_index=True, use_container_width=True)
-
-st.markdown("</div>", unsafe_allow_html=True)
 
 
 
