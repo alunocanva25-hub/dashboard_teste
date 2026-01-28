@@ -1531,6 +1531,140 @@ if st.session_state.show_relatorios:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
+# ==================================================
+# TAB 4 — DISTRIBUIDORA POR MÊS
+# (usa COL_ESTADO como "Distribuidora")
+# ==================================================
+with tab_dist_mes:
+    st.subheader("Distribuidora por Mês (AM/AS) — Procedente/Improcedente/Outros + Totais")
+
+    if not _col_ok(COL_DATA) or not _col_ok(COL_ESTADO):
+        st.warning("Preciso das colunas DATA e ESTADO/UF (usada aqui como 'Distribuidora').")
+    else:
+        base = df_periodo.copy()
+        base[COL_DATA] = pd.to_datetime(base[COL_DATA], errors="coerce", dayfirst=True)
+        base = base.dropna(subset=[COL_DATA]).copy()
+
+        if base.empty:
+            st.info("Sem dados com DATA válida no período.")
+        else:
+            base = _classificar(base)
+            base[COL_ESTADO] = _norm(base[COL_ESTADO])
+
+            # filtros
+            anos = sorted(base[COL_DATA].dt.year.dropna().unique().astype(int).tolist())
+            ano_sel2 = st.selectbox("Ano", anos, index=len(anos)-1 if anos else 0, key="dist_mes_ano")
+
+            base = base[base[COL_DATA].dt.year == int(ano_sel2)].copy()
+
+            # top N distribuidoras (para não ficar poluído)
+            top_n = st.slider("Top N distribuidoras", 3, 30, 10, key="dist_mes_topn")
+
+            # pega TOP N por volume anual
+            top = (
+                base.groupby(COL_ESTADO)
+                .size()
+                .sort_values(ascending=False)
+                .head(top_n)
+                .index
+                .tolist()
+            )
+            base = base[base[COL_ESTADO].isin(top)].copy()
+
+            # mês
+            base["MES_NUM"] = base[COL_DATA].dt.month
+            base["MÊS"] = base["MES_NUM"].map(MESES_PT)
+
+            # agregado: mês x distribuidora x classe
+            tab = (
+                base.groupby(["MES_NUM", "MÊS", COL_ESTADO, "_CLASSE_"])
+                .size()
+                .reset_index(name="QTD")
+            )
+
+            if tab.empty:
+                st.info("Sem dados para este ano/top N.")
+            else:
+                # garante meses 1..12 e classes
+                classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
+                meses_df = pd.DataFrame({"MES_NUM": list(range(1, 13))})
+                meses_df["MÊS"] = meses_df["MES_NUM"].map(MESES_PT)
+
+                grid = (
+                    meses_df.assign(_k=1)
+                    .merge(pd.DataFrame({COL_ESTADO: top}).assign(_k=1), on="_k")
+                    .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
+                    .drop(columns="_k")
+                )
+
+                tab = (
+                    grid.merge(tab, on=["MES_NUM", "MÊS", COL_ESTADO, "_CLASSE_"], how="left")
+                    .fillna({"QTD": 0})
+                )
+                tab["QTD"] = tab["QTD"].astype(int)
+
+                # total do mês (para % em cima)
+                total_mes = tab.groupby(["MES_NUM", "MÊS"])["QTD"].transform("sum").replace(0, 1)
+                tab["PCT_MES"] = (tab["QTD"] / total_mes * 100).round(1)
+
+                # QTD dentro
+                tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+
+                # gráfico: empilhado por CLASSE, facet por DISTRIBUIDORA (1 gráfico por distribuidora)
+                fig = px.bar(
+                    tab.sort_values("MES_NUM"),
+                    x="MÊS",
+                    y="QTD",
+                    color="_CLASSE_",
+                    barmode="stack",
+                    facet_col=COL_ESTADO,
+                    facet_col_wrap=2,
+                    template="plotly_dark",
+                    category_orders={"MÊS": MESES_ORDEM, "_CLASSE_": classes},
+                    color_discrete_map={
+                        "PROCEDENTE": COR_PROC,
+                        "IMPROCEDENTE": COR_IMP,
+                        "OUTROS": COR_OUT,
+                    }
+                )
+
+                fig.update_traces(
+                    text=tab["TXT_QTD"],
+                    textposition="inside",
+                    insidetextanchor="middle",
+                    cliponaxis=False
+                )
+
+                # limpa grid/eixo esquerdo e títulos repetidos
+                fig.for_each_yaxis(lambda a: a.update(visible=False, showticklabels=False, showgrid=False, zeroline=False))
+                fig.for_each_xaxis(lambda a: a.update(showgrid=False, ticks=""))
+                fig.update_layout(plot_bgcolor="rgba(0,0,0,0)")
+
+                # legenda embaixo (padronizada)
+                fig = _legend_bottom(fig, y=-0.18)
+                fig.update_layout(margin=dict(l=10, r=220, t=40, b=90))
+
+                # quadro total (recorte atual)
+                proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
+                improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
+                outros_total = int(tab.loc[tab["_CLASSE_"] == "OUTROS", "QTD"].sum())
+                total_geral = proc_total + improc_total + outros_total
+
+                # ajuste posição se quiser
+                BOX_X_MES = 1.22  # maior = mais direita / menor = mais esquerda
+                BOX_Y_MES = 0.98  # maior = sobe / menor = desce
+                fig = _add_summary_box(fig, proc_total, improc_total, outros_total, total_geral, box_x=BOX_X_MES, box_y=BOX_Y_MES)
+
+                st.plotly_chart(fig, use_container_width=True)
+
+                # tabela resumo (mês total por distribuidora)
+                resumo = (
+                    tab.groupby(["MÊS", COL_ESTADO])["QTD"]
+                    .sum()
+                    .reset_index()
+                )
+                st.dataframe(resumo, hide_index=True, use_container_width=True)
+
 
 
 # ======================================================
