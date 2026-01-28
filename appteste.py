@@ -1023,7 +1023,10 @@ st.download_button(
 )
 
 # ======================================================
-# RELATÓRIOS GERENCIAIS (ALINHADO • % EM CIMA • QTD DENTRO • COMPARATIVO ANUAL COM RESUMO DENTRO)
+# RELATÓRIOS GERENCIAIS (COMPLETO)
+# - Legendas padronizadas (embaixo) em TODOS os gráficos
+# - Quadro (Procedente/Improcedente/Outros/Total) em TODOS os 3 relatórios
+# - Comparativo Anual com % alinhada corretamente (sem bagunça)
 # ======================================================
 
 def _col_ok(c):
@@ -1031,6 +1034,9 @@ def _col_ok(c):
 
 def _norm(s: pd.Series) -> pd.Series:
     return s.astype(str).str.upper().str.strip()
+
+def _fmt_int(n: int) -> str:
+    return f"{int(n):,}".replace(",", ".")
 
 def _classificar(df_):
     """
@@ -1056,30 +1062,38 @@ def _style_clean(fig):
     fig.update_layout(plot_bgcolor="rgba(0,0,0,0)")
     return fig
 
-def _fmt_int(n: int) -> str:
-    return f"{int(n):,}".replace(",", ".")
-
-def _add_pct_trace_for_totals(fig, x_vals, y_totals, pct_vals, y_pad_frac=0.04):
-    if not y_totals:
-        return fig
-    y_max = max(y_totals) if max(y_totals) > 0 else 1
-    pad = y_max * y_pad_frac
-
-    fig.add_scatter(
-        x=x_vals,
-        y=[float(y) + pad for y in y_totals],
-        mode="text",
-        text=[f"{p:.1f}%" for p in pct_vals],
-        textposition="middle center",
-        showlegend=False,
-        textfont=dict(size=12, family="Arial Black", color="white"),
-        hoverinfo="skip",
+def _legend_bottom(fig, y=-0.22, font_size=12):
+    """
+    ✅ legenda horizontal embaixo do gráfico
+    - y mais negativo = desce mais a legenda
+    """
+    fig.update_layout(
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=y,
+            xanchor="left",
+            x=0.0,
+            title_text="",
+            bgcolor="rgba(0,0,0,0)",
+            font=dict(size=font_size, color="white"),
+        )
     )
     return fig
 
-def _add_summary_box_inside_fig(fig, proc, improc, outros, total):
+def _add_summary_box(fig, proc, improc, outros, total, box_x=1.18, box_y=0.98):
     """
-    ✅ Caixa de resumo DENTRO do gráfico (canto superior direito)
+    ✅ Quadro de totais (Procedente/Improcedente/Outros/Total) DENTRO da FIGURA.
+
+    COMO MOVER:
+    - box_x (direita/esquerda):
+        * aumenta box_x (ex.: 1.25) -> vai MAIS para a DIREITA
+        * diminui box_x (ex.: 1.05) -> vai MAIS para a ESQUERDA
+        * use 0.98 se quiser "dentro do plot" (canto superior direito)
+        * use >1.00 para ficar na lateral (fora do plot, mas dentro da figura)
+    - box_y (cima/baixo):
+        * aumenta box_y (ex.: 1.02) -> sobe
+        * diminui box_y (ex.: 0.90) -> desce
     """
     txt = (
         f"<span style='color:{COR_PROC};font-size:14px'>■</span> <b>PROCEDENTE</b><br>"
@@ -1094,7 +1108,7 @@ def _add_summary_box_inside_fig(fig, proc, improc, outros, total):
 
     fig.add_annotation(
         xref="paper", yref="paper",
-        x=0.995, y=0.98,   # canto superior direito
+        x=box_x, y=box_y,
         xanchor="right", yanchor="top",
         text=txt,
         showarrow=False,
@@ -1103,21 +1117,6 @@ def _add_summary_box_inside_fig(fig, proc, improc, outros, total):
         bordercolor="rgba(255,255,255,0.18)",
         borderwidth=1,
         borderpad=10,
-    )
-    return fig
-
-def _legend_bottom(fig, y=-0.22, font_size=12):
-    fig.update_layout(
-        legend=dict(
-            orientation="h",
-            yanchor="top",
-            y=y,
-            xanchor="left",
-            x=0.0,
-            title_text="",
-            bgcolor="rgba(0,0,0,0)",
-            font=dict(size=font_size, color="white"),
-        )
     )
     return fig
 
@@ -1141,7 +1140,7 @@ if st.session_state.show_relatorios:
     tab_reg, tab_uf, tab_ano = st.tabs(["📍 Regional", "🗺️ Estado (UF)", "📅 Comparativo Anual"])
 
     # ==================================================
-    # TAB 1 — REGIONAL (mantém como estava bom)
+    # TAB 1 — REGIONAL
     # ==================================================
     with tab_reg:
         st.subheader("Relatório por Regional")
@@ -1162,6 +1161,10 @@ if st.session_state.show_relatorios:
                     index=0,
                     key="rg_modo_reg"
                 )
+
+                # posição do box (regional)
+                BOX_X_REG = 1.18  # <-- mova p/ direita/esquerda
+                BOX_Y_REG = 0.98  # <-- mova p/ cima/baixo
 
                 if modo == "Uma regional (detalhe por resultado)":
                     regs = sorted(base[COL_REGIONAL].unique().tolist())
@@ -1189,19 +1192,43 @@ if st.session_state.show_relatorios:
                             "OUTROS": COR_OUT,
                         },
                     )
-                    fig.update_traces(text=tab["QTD"], textposition="inside", insidetextanchor="middle", cliponaxis=False, showlegend=False)
-                    fig = _style_clean(fig)
 
-                    fig = _add_pct_trace_for_totals(
-                        fig,
-                        x_vals=tab["_CLASSE_"].tolist(),
-                        y_totals=tab["QTD"].tolist(),
-                        pct_vals=tab["PCT"].tolist(),
-                        y_pad_frac=0.06
+                    # QTD dentro
+                    tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+                    fig.update_traces(text=tab["TXT_QTD"], textposition="inside", insidetextanchor="middle", cliponaxis=False)
+
+                    # % em cima (simples aqui)
+                    y_max = int(tab["QTD"].max()) if int(tab["QTD"].max()) > 0 else 1
+                    pad = y_max * 0.10
+                    fig.add_scatter(
+                        x=tab["_CLASSE_"],
+                        y=tab["QTD"].astype(float) + pad,
+                        mode="text",
+                        text=[("" if q == 0 else f"{p:.1f}%") for q, p in zip(tab["QTD"], tab["PCT"])],
+                        textposition="middle center",
+                        showlegend=False,
+                        textfont=dict(size=11, family="Arial Black", color="white"),
+                        hoverinfo="skip",
                     )
 
+                    fig = _style_clean(fig)
+                    fig = _legend_bottom(fig, y=-0.22)
+                    fig.update_layout(margin=dict(l=10, r=180, t=30, b=80))  # r=180 reserva espaço pro box
+
+                    # ✅ quadro em TODOS os 3 relatórios
+                    proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
+                    improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
+                    outros_total = int(tab.loc[tab["_CLASSE_"] == "OUTROS", "QTD"].sum())
+                    total_geral = proc_total + improc_total + outros_total
+                    fig = _add_summary_box(fig, proc_total, improc_total, outros_total, total_geral, box_x=BOX_X_REG, box_y=BOX_Y_REG)
+
                     st.plotly_chart(fig, use_container_width=True)
-                    st.dataframe(tab.rename(columns={"_CLASSE_":"RESULTADO","PCT":"%"}), hide_index=True, use_container_width=True)
+
+                    st.dataframe(
+                        tab.rename(columns={"_CLASSE_": "RESULTADO", "PCT": "%"}),
+                        hide_index=True,
+                        use_container_width=True
+                    )
 
                 else:
                     tab = (
@@ -1228,6 +1255,7 @@ if st.session_state.show_relatorios:
                         var_name="RESULTADO",
                         value_name="QTD"
                     )
+                    melt["TXT_QTD"] = melt["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
 
                     fig = px.bar(
                         melt,
@@ -1242,24 +1270,38 @@ if st.session_state.show_relatorios:
                             "OUTROS": COR_OUT,
                         },
                     )
-                    melt["TXT"] = melt["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
-                    fig.update_traces(text=melt["TXT"], textposition="inside", insidetextanchor="middle", cliponaxis=False)
-                    fig.update_layout(showlegend=False)
-                    fig = _style_clean(fig)
+                    fig.update_traces(text=melt["TXT_QTD"], textposition="inside", insidetextanchor="middle", cliponaxis=False)
 
-                    fig = _add_pct_trace_for_totals(
-                        fig,
-                        x_vals=tab_top[COL_REGIONAL].tolist(),
-                        y_totals=tab_top["TOTAL"].tolist(),
-                        pct_vals=tab_top["PCT_TOTAL"].tolist(),
-                        y_pad_frac=0.03
+                    # % em cima do total da regional (scatter alinhado porque x é único)
+                    y_max = int(tab_top["TOTAL"].max()) if int(tab_top["TOTAL"].max()) > 0 else 1
+                    pad = y_max * 0.04
+                    fig.add_scatter(
+                        x=tab_top[COL_REGIONAL],
+                        y=tab_top["TOTAL"].astype(float) + pad,
+                        mode="text",
+                        text=[f"{p:.1f}%" for p in tab_top["PCT_TOTAL"]],
+                        textposition="middle center",
+                        showlegend=False,
+                        textfont=dict(size=11, family="Arial Black", color="white"),
+                        hoverinfo="skip",
                     )
+
+                    fig = _style_clean(fig)
+                    fig = _legend_bottom(fig, y=-0.22)
+                    fig.update_layout(margin=dict(l=10, r=180, t=30, b=80))
+
+                    # ✅ quadro (soma do recorte Top N)
+                    proc_total = int(tab_top["PROCEDENTE"].sum())
+                    improc_total = int(tab_top["IMPROCEDENTE"].sum())
+                    outros_total = int(tab_top["OUTROS"].sum())
+                    total_geral2 = proc_total + improc_total + outros_total
+                    fig = _add_summary_box(fig, proc_total, improc_total, outros_total, total_geral2, box_x=BOX_X_REG, box_y=BOX_Y_REG)
 
                     st.plotly_chart(fig, use_container_width=True)
                     st.dataframe(tab_top, hide_index=True, use_container_width=True)
 
     # ==================================================
-    # TAB 2 — UF (mantém como estava bom)
+    # TAB 2 — UF
     # ==================================================
     with tab_uf:
         st.subheader("Relatório por Estado (UF)")
@@ -1298,6 +1340,7 @@ if st.session_state.show_relatorios:
                     var_name="RESULTADO",
                     value_name="QTD"
                 )
+                melt["TXT_QTD"] = melt["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
 
                 fig = px.bar(
                     melt,
@@ -1312,202 +1355,181 @@ if st.session_state.show_relatorios:
                         "OUTROS": COR_OUT,
                     }
                 )
-                melt["TXT"] = melt["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
-                fig.update_traces(text=melt["TXT"], textposition="inside", insidetextanchor="middle", cliponaxis=False)
-                fig.update_layout(showlegend=False)
-                fig = _style_clean(fig)
+                fig.update_traces(text=melt["TXT_QTD"], textposition="inside", insidetextanchor="middle", cliponaxis=False)
 
-                fig = _add_pct_trace_for_totals(
-                    fig,
-                    x_vals=tab_top[COL_ESTADO].tolist(),
-                    y_totals=tab_top["TOTAL"].tolist(),
-                    pct_vals=tab_top["PCT_TOTAL"].tolist(),
-                    y_pad_frac=0.02
+                # % em cima do total da UF
+                y_max = int(tab_top["TOTAL"].max()) if int(tab_top["TOTAL"].max()) > 0 else 1
+                pad = y_max * 0.03
+                fig.add_scatter(
+                    x=tab_top[COL_ESTADO],
+                    y=tab_top["TOTAL"].astype(float) + pad,
+                    mode="text",
+                    text=[f"{p:.1f}%" for p in tab_top["PCT_TOTAL"]],
+                    textposition="middle center",
+                    showlegend=False,
+                    textfont=dict(size=11, family="Arial Black", color="white"),
+                    hoverinfo="skip",
                 )
+
+                fig = _style_clean(fig)
+                fig = _legend_bottom(fig, y=-0.22)
+                fig.update_layout(margin=dict(l=10, r=180, t=30, b=80))
+
+                # posição do box (UF)
+                BOX_X_UF = 1.18  # <-- mova p/ direita/esquerda
+                BOX_Y_UF = 0.98  # <-- mova p/ cima/baixo
+
+                # ✅ quadro (soma do recorte Top N)
+                proc_total = int(tab_top["PROCEDENTE"].sum())
+                improc_total = int(tab_top["IMPROCEDENTE"].sum())
+                outros_total = int(tab_top["OUTROS"].sum())
+                total_geral2 = proc_total + improc_total + outros_total
+                fig = _add_summary_box(fig, proc_total, improc_total, outros_total, total_geral2, box_x=BOX_X_UF, box_y=BOX_Y_UF)
 
                 st.plotly_chart(fig, use_container_width=True)
                 st.dataframe(tab, hide_index=True, use_container_width=True)
 
-# ==================================================
-# TAB 3 — COMPARATIVO ANUAL (CORRIGIDO: % EM CIMA ALINHADA)
-# ==================================================
-with tab_ano:
-    st.subheader("Comparativo Anual — Procedente x Improcedente x Outros")
+    # ==================================================
+    # TAB 3 — COMPARATIVO ANUAL
+    # ==================================================
+    with tab_ano:
+        st.subheader("Comparativo Anual — Procedente x Improcedente x Outros")
 
-    if not _col_ok(COL_DATA):
-        st.warning("Coluna DATA não encontrada.")
-    else:
-        base = df.copy()
-        base[COL_DATA] = pd.to_datetime(base[COL_DATA], errors="coerce", dayfirst=True)
-        base = base.dropna(subset=[COL_DATA]).copy()
-
-        if base.empty:
-            st.info("Sem datas válidas.")
+        if not _col_ok(COL_DATA):
+            st.warning("Coluna DATA não encontrada.")
         else:
-            base = _classificar(base)
-            base["ANO"] = base[COL_DATA].dt.year.astype(int)
+            base = df.copy()
+            base[COL_DATA] = pd.to_datetime(base[COL_DATA], errors="coerce", dayfirst=True)
+            base = base.dropna(subset=[COL_DATA]).copy()
 
-            # filtro UF opcional
-            if _col_ok(COL_ESTADO):
-                base[COL_ESTADO] = _norm(base[COL_ESTADO])
-                ufs_disp = ["TOTAL"] + sorted(base[COL_ESTADO].dropna().unique().tolist())
-                idx = ufs_disp.index(uf_sel) if isinstance(uf_sel, str) and uf_sel in ufs_disp else 0
-                uf_comp = st.selectbox("Filtrar UF (opcional)", options=ufs_disp, index=idx, key="cmp_ano_uf")
-                if uf_comp != "TOTAL":
-                    base = base[base[COL_ESTADO] == uf_comp].copy()
-
-            tab = (
-                base.groupby(["ANO", "_CLASSE_"])
-                .size()
-                .reset_index(name="QTD")
-            )
-
-            if tab.empty:
-                st.info("Sem dados para o comparativo anual.")
+            if base.empty:
+                st.info("Sem datas válidas.")
             else:
-                classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
-                anos = sorted(tab["ANO"].unique().tolist())
+                base = _classificar(base)
+                base["ANO"] = base[COL_DATA].dt.year.astype(int)
 
-                # garante 3 classes por ano
-                grid = (
-                    pd.DataFrame({"ANO": anos}).assign(_k=1)
-                    .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
-                    .drop(columns="_k")
-                )
-                tab = grid.merge(tab, on=["ANO", "_CLASSE_"], how="left").fillna({"QTD": 0})
-                tab["QTD"] = tab["QTD"].astype(int)
+                if _col_ok(COL_ESTADO):
+                    base[COL_ESTADO] = _norm(base[COL_ESTADO])
+                    ufs_disp = ["TOTAL"] + sorted(base[COL_ESTADO].dropna().unique().tolist())
+                    idx = ufs_disp.index(uf_sel) if isinstance(uf_sel, str) and uf_sel in ufs_disp else 0
+                    uf_comp = st.selectbox("Filtrar UF (opcional)", options=ufs_disp, index=idx, key="cmp_ano_uf")
+                    if uf_comp != "TOTAL":
+                        base = base[base[COL_ESTADO] == uf_comp].copy()
 
-                # % dentro do ano (composição)
-                total_ano = tab.groupby("ANO")["QTD"].transform("sum").replace(0, 1)
-                tab["PCT"] = (tab["QTD"] / total_ano * 100).round(1)
-
-                # labels
-                tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
-                tab["TXT_PCT"] = tab.apply(lambda r: "" if int(r["QTD"]) == 0 else f'{r["PCT"]:.1f}%', axis=1)
-
-                fig = px.bar(
-                    tab,
-                    x="ANO",
-                    y="QTD",
-                    color="_CLASSE_",
-                    barmode="group",
-                    template="plotly_dark",
-                    category_orders={"_CLASSE_": classes},
-                    color_discrete_map={
-                        "PROCEDENTE": COR_PROC,
-                        "IMPROCEDENTE": COR_IMP,
-                        "OUTROS": COR_OUT,
-                    },
+                tab = (
+                    base.groupby(["ANO", "_CLASSE_"])
+                    .size()
+                    .reset_index(name="QTD")
                 )
 
-                # ✅ QTD dentro + % em cima (por texttemplate, alinhado com offset das barras)
-                fig.update_traces(
-                    text=tab["TXT_QTD"],
-                    textposition="inside",
-                    insidetextanchor="middle",
-                    cliponaxis=False
-                )
-                fig.update_traces(
-                    texttemplate="%{text}",
-                    # texto de dentro já ficou OK
-                )
+                if tab.empty:
+                    st.info("Sem dados para o comparativo anual.")
+                else:
+                    classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
+                    anos = sorted(tab["ANO"].unique().tolist())
 
-                # adiciona % como "outside" usando o MESMO trace -> só mudamos via customdata + texttemplate
-                fig.update_traces(
-                    customdata=tab["TXT_PCT"],
-                    # % fora: usa customdata
-                    # coloca fora e mantém o text interno via text (não dá para dois textos no mesmo trace),
-                    # então fazemos um truque: duplicamos o trace invisível só para % (abaixo)
-                )
+                    grid = (
+                        pd.DataFrame({"ANO": anos}).assign(_k=1)
+                        .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
+                        .drop(columns="_k")
+                    )
+                    tab = grid.merge(tab, on=["ANO", "_CLASSE_"], how="left").fillna({"QTD": 0})
+                    tab["QTD"] = tab["QTD"].astype(int)
 
-                # --- trace invisível só para % (alinhado nas barras)
-                fig_pct = px.bar(
-                    tab,
-                    x="ANO",
-                    y="QTD",
-                    color="_CLASSE_",
-                    barmode="group",
-                    template="plotly_dark",
-                    category_orders={"_CLASSE_": classes},
-                    color_discrete_map={
-                        "PROCEDENTE": "rgba(0,0,0,0)",
-                        "IMPROCEDENTE": "rgba(0,0,0,0)",
-                        "OUTROS": "rgba(0,0,0,0)",
-                    },
-                )
-                fig_pct.update_traces(
-                    marker_line_width=0,
-                    marker_opacity=0,
-                    text=tab["TXT_PCT"],
-                    textposition="outside",
-                    cliponaxis=False,
-                    showlegend=False,
-                    hoverinfo="skip",
-                    textfont=dict(size=11, family="Arial Black", color="white"),
-                )
+                    total_ano = tab.groupby("ANO")["QTD"].transform("sum").replace(0, 1)
+                    tab["PCT"] = (tab["QTD"] / total_ano * 100).round(1)
 
-                # mescla os traces de % no gráfico principal
-                for tr in fig_pct.data:
-                    fig.add_trace(tr)
+                    tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+                    tab["TXT_PCT"] = tab.apply(lambda r: "" if int(r["QTD"]) == 0 else f'{r["PCT"]:.1f}%', axis=1)
 
-                # sem grid / sem eixo esquerdo
-                fig.update_xaxes(showgrid=False, ticks="")
-                fig.update_yaxes(showgrid=False, visible=False, showticklabels=False, ticks="", zeroline=False, title_text="")
-                fig.update_layout(plot_bgcolor="rgba(0,0,0,0)")
+                    # gráfico base: QTD dentro
+                    fig = px.bar(
+                        tab,
+                        x="ANO",
+                        y="QTD",
+                        color="_CLASSE_",
+                        barmode="group",
+                        template="plotly_dark",
+                        category_orders={"_CLASSE_": classes},
+                        color_discrete_map={
+                            "PROCEDENTE": COR_PROC,
+                            "IMPROCEDENTE": COR_IMP,
+                            "OUTROS": COR_OUT,
+                        },
+                    )
+                    fig.update_traces(
+                        text=tab["TXT_QTD"],
+                        textposition="inside",
+                        insidetextanchor="middle",
+                        cliponaxis=False
+                    )
 
-                # ✅ legenda embaixo (padrão para todos)
-                fig = _legend_bottom(fig, y=-0.22)
-                fig.update_layout(margin=dict(l=10, r=180, t=30, b=80))
+                    # ✅ % ALINHADA: trace invisível só para % (usa o mesmo offset do group)
+                    fig_pct = px.bar(
+                        tab,
+                        x="ANO",
+                        y="QTD",
+                        color="_CLASSE_",
+                        barmode="group",
+                        template="plotly_dark",
+                        category_orders={"_CLASSE_": classes},
+                        color_discrete_map={
+                            "PROCEDENTE": "rgba(0,0,0,0)",
+                            "IMPROCEDENTE": "rgba(0,0,0,0)",
+                            "OUTROS": "rgba(0,0,0,0)",
+                        },
+                    )
+                    fig_pct.update_traces(
+                        marker_line_width=0,
+                        marker_opacity=0,
+                        text=tab["TXT_PCT"],
+                        textposition="outside",
+                        cliponaxis=False,
+                        showlegend=False,
+                        hoverinfo="skip",
+                        textfont=dict(size=11, family="Arial Black", color="white"),
+                    )
+                    for tr in fig_pct.data:
+                        fig.add_trace(tr)
 
-                # box à direita (dentro da figura)
-                proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
-                improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
-                outros_total = int(tab.loc[tab["_CLASSE_"] == "OUTROS", "QTD"].sum())
-                total_geral = proc_total + improc_total + outros_total
+                    fig = _style_clean(fig)
 
-                txt = (
-                    f"<span style='color:{COR_PROC};font-size:14px'>■</span> <b>PROCEDENTE</b><br>"
-                    f"<span style='color:{COR_PROC};font-size:18px'><b>{_fmt_int(proc_total)}</b></span><br><br>"
-                    f"<span style='color:{COR_IMP};font-size:14px'>■</span> <b>IMPROCEDENTE</b><br>"
-                    f"<span style='color:{COR_IMP};font-size:18px'><b>{_fmt_int(improc_total)}</b></span><br><br>"
-                    f"<span style='color:{COR_OUT};font-size:14px'>■</span> <b>OUTROS</b><br>"
-                    f"<span style='color:{COR_OUT};font-size:18px'><b>{_fmt_int(outros_total)}</b></span><br><br>"
-                    f"<span style='color:#fcba03;font-size:12px'><b>TOTAL</b></span><br>"
-                    f"<span style='color:#fcba03;font-size:20px'><b>{_fmt_int(total_geral)}</b></span>"
-                )
-                fig.add_annotation(
-                    xref="paper", yref="paper",
-                    x=1.26, y=0.98,
-                    xanchor="right", yanchor="top",
-                    text=txt,
-                    showarrow=False,
-                    align="left",
-                    bgcolor="rgba(0,0,0,0.45)",
-                    bordercolor="rgba(255,255,255,0.18)",
-                    borderwidth=1,
-                    borderpad=10,
-                )
+                    # legenda embaixo + margem direita pro box + margem inferior da legenda
+                    fig = _legend_bottom(fig, y=-0.22)
+                    fig.update_layout(margin=dict(l=10, r=220, t=30, b=80))
 
-                st.plotly_chart(fig, use_container_width=True)
+                    # posição do box (ANUAL)
+                    BOX_X_ANO = 1.22  # <-- aumente (1.30) para ir mais à direita; diminua (1.05) para esquerda
+                    BOX_Y_ANO = 0.98  # <-- aumente para subir; diminua para descer
 
-                # tabela
-                piv = (
-                    tab.pivot_table(index="ANO", columns="_CLASSE_", values="QTD", aggfunc="sum", fill_value=0)
-                    .reset_index()
-                )
-                for c in classes:
-                    if c not in piv.columns:
-                        piv[c] = 0
-                piv["TOTAL"] = piv["PROCEDENTE"] + piv["IMPROCEDENTE"] + piv["OUTROS"]
+                    proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
+                    improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
+                    outros_total = int(tab.loc[tab["_CLASSE_"] == "OUTROS", "QTD"].sum())
+                    total_geral2 = proc_total + improc_total + outros_total
 
-                den = piv["TOTAL"].replace(0, 1)
-                piv["%PROCEDENTE"] = (piv["PROCEDENTE"] / den * 100).round(1)
-                piv["%IMPROCEDENTE"] = (piv["IMPROCEDENTE"] / den * 100).round(1)
-                piv["%OUTROS"] = (piv["OUTROS"] / den * 100).round(1)
+                    # ✅ quadro em TODOS os 3 relatórios
+                    fig = _add_summary_box(fig, proc_total, improc_total, outros_total, total_geral2, box_x=BOX_X_ANO, box_y=BOX_Y_ANO)
 
-                st.dataframe(piv, hide_index=True, use_container_width=True)
+                    st.plotly_chart(fig, use_container_width=True)
 
+                    # tabela
+                    piv = (
+                        tab.pivot_table(index="ANO", columns="_CLASSE_", values="QTD", aggfunc="sum", fill_value=0)
+                        .reset_index()
+                    )
+                    for c in classes:
+                        if c not in piv.columns:
+                            piv[c] = 0
+                    piv["TOTAL"] = piv["PROCEDENTE"] + piv["IMPROCEDENTE"] + piv["OUTROS"]
 
+                    den = piv["TOTAL"].replace(0, 1)
+                    piv["%PROCEDENTE"] = (piv["PROCEDENTE"] / den * 100).round(1)
+                    piv["%IMPROCEDENTE"] = (piv["IMPROCEDENTE"] / den * 100).round(1)
+                    piv["%OUTROS"] = (piv["OUTROS"] / den * 100).round(1)
+
+                    st.dataframe(piv, hide_index=True, use_container_width=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 
 
