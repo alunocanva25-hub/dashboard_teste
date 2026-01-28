@@ -1528,8 +1528,7 @@ if st.session_state.show_relatorios:
                     piv["%OUTROS"] = (piv["OUTROS"] / den * 100).round(1)
 
                     st.dataframe(piv, hide_index=True, use_container_width=True)
-
-st.markdown("</div>", unsafe_allow_html=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
 
 # ==================================================
 # TAB 4 — DISTRIBUIDORA POR MÊS
