@@ -1542,10 +1542,13 @@ if st.session_state.show_relatorios:
 
                     st.dataframe(piv, hide_index=True, use_container_width=True)
 
-    # ==================================================
+# ==================================================
 # TAB 4 — DISTRIBUIDORA POR MÊS
 # (Aqui "Distribuidora" = COL_ESTADO)
-# ✅ Correção: meses (jan..dez) aparecendo em TODOS os facets
+# ✅ ATUALIZAÇÕES:
+# 1) Título dos facets: tira "LOCALIDADE=" e deixa só o estado
+# 2) Abaixa o título (para não ficar entre os meses)
+# 3) Meses (jan..dez) aparecem em TODOS os facets
 # ==================================================
 with tab_dist_mes:
     st.subheader("Distribuidora por Mês (meses abreviados: jan, fev, mar...)")
@@ -1648,12 +1651,33 @@ with tab_dist_mes:
                 ))
 
                 # remove y em todos
-                fig.for_each_yaxis(lambda a: a.update(visible=False, showticklabels=False, showgrid=False, zeroline=False))
+                fig.for_each_yaxis(lambda a: a.update(
+                    visible=False,
+                    showticklabels=False,
+                    showgrid=False,
+                    zeroline=False
+                ))
 
                 fig.update_layout(plot_bgcolor="rgba(0,0,0,0)")
 
+                # ✅ 1) Tira "LOCALIDADE=" do título e deixa só o estado
+                # ✅ 2) Abaixa o título para não ficar em cima/entre os meses
+                #    - maior => sobe / menor => desce
+                FACET_TITLE_Y = 0.92  # ajuste fino: 0.95 sobe / 0.88 desce
+                for ann in fig.layout.annotations:
+                    if ann.text and "=" in ann.text:
+                        ann.text = ann.text.split("=", 1)[1]  # fica só "PARÁ"
+                    ann.y = FACET_TITLE_Y
+                    ann.font = dict(size=12, color="white", family="Arial Black")
+
                 fig = _legend_bottom(fig, y=-0.18)
-                fig.update_layout(margin=dict(l=10, r=220, t=40, b=90))
+
+                # ✅ aumenta espaçamento pra não colar no eixo dos meses
+                fig.update_layout(
+                    margin=dict(l=10, r=220, t=55, b=95),
+                    facet_row_spacing=0.14,  # + => mais espaço vertical (títulos não encostam nos meses)
+                    facet_col_spacing=0.06
+                )
 
                 # === POSIÇÃO DO QUADRO (MÊS) ===
                 BOX_X_MES = 1.22  # (->) maior = mais DIREITA | menor = mais ESQUERDA
@@ -1664,7 +1688,11 @@ with tab_dist_mes:
                 outros_total = int(tab.loc[tab["_CLASSE_"] == "OUTROS", "QTD"].sum())
                 total_geral = proc_total + improc_total + outros_total
 
-                fig = _add_summary_box(fig, proc_total, improc_total, outros_total, total_geral, box_x=BOX_X_MES, box_y=BOX_Y_MES)
+                fig = _add_summary_box(
+                    fig,
+                    proc_total, improc_total, outros_total, total_geral,
+                    box_x=BOX_X_MES, box_y=BOX_Y_MES
+                )
 
                 st.plotly_chart(fig, use_container_width=True)
 
@@ -1672,6 +1700,7 @@ with tab_dist_mes:
 # ==================================================
 # TAB 5 — DEMANDA x DEMANDAS (GERAL)
 # COMPARATIVO: 1 Demanda (X) vs Todas as Restantes
+# ✅ ATUALIZAÇÃO: neste relatório você escolhe AM / AS / AM+AS (todas)
 # - QTD dentro
 # - % em cima
 # - legenda embaixo
@@ -1680,10 +1709,23 @@ with tab_dist_mes:
 with tab_demanda:
     st.subheader("Demanda x Demandas (Geral) — DEMANDA SOLICITADA (X vs RESTANTE)")
 
+    # ✅ FILTRO SOMENTE AQUI (como você pediu)
+    opt_tipo = st.radio(
+        "Filtrar tipo de nota (somente para este relatório)",
+        options=["Apenas AM", "Apenas AS", "AM + AS (todas)"],
+        index=0,           # padrão: apenas AM
+        horizontal=True,
+        key="demanda_tipo_filtro"
+    )
+
+    # ✅ Define colunas aqui dentro (evita NameError)
     COL_DEMANDA_LOCAL = achar_coluna(df, ["DEMANDA SOLICITADA", "DEMANDA_SOLICITADA", "DEMANDA"])
+    COL_TIPO_LOCAL    = achar_coluna(df, ["TIPO"])  # usado para filtrar AM/AS
 
     if not _col_ok(COL_DEMANDA_LOCAL):
         st.warning("Coluna 'DEMANDA SOLICITADA' não encontrada na base.")
+    elif not _col_ok(COL_TIPO_LOCAL):
+        st.warning("Coluna 'TIPO' não encontrada (preciso dela para filtrar AM/AS neste relatório).")
     else:
         base = df_periodo.copy()
         base = base.dropna(subset=[COL_DEMANDA_LOCAL]).copy()
@@ -1691,112 +1733,134 @@ with tab_demanda:
         if base.empty:
             st.info("Sem dados no período.")
         else:
-            base = _classificar(base)
-            base["DEMANDA"] = _norm(base[COL_DEMANDA_LOCAL])
-
-            demandas_disp = sorted(base["DEMANDA"].dropna().unique().tolist())
-            if not demandas_disp:
-                st.info("Sem demandas válidas para comparar.")
+            # ✅ aplica filtro AM / AS / AM+AS somente aqui
+            tipo_norm = _norm(base[COL_TIPO_LOCAL].fillna(""))
+            if opt_tipo == "Apenas AM":
+                base = base[tipo_norm.str.contains(r"\bAM\b", na=False)].copy()
+            elif opt_tipo == "Apenas AS":
+                base = base[tipo_norm.str.contains(r"\bAS\b", na=False)].copy()
             else:
-                dem_x = st.selectbox("Escolha a demanda (X)", demandas_disp, index=0, key="dem_x_vs_all")
+                pass  # AM + AS (todas)
 
-                base["GRUPO"] = "RESTANTE"
-                base.loc[base["DEMANDA"] == dem_x, "GRUPO"] = f"X: {dem_x}"
+            if base.empty:
+                st.info("Sem dados para o filtro escolhido (AM/AS) neste período.")
+            else:
+                base = _classificar(base)
+                base["DEMANDA"] = _norm(base[COL_DEMANDA_LOCAL])
 
-                # Agrega: grupo x classe
-                tab = (
-                    base.groupby(["GRUPO", "_CLASSE_"])
-                    .size()
-                    .reset_index(name="QTD")
-                )
+                demandas_disp = sorted(base["DEMANDA"].dropna().unique().tolist())
+                if not demandas_disp:
+                    st.info("Sem demandas válidas para comparar.")
+                else:
+                    dem_x = st.selectbox("Escolha a demanda (X)", demandas_disp, index=0, key="dem_x_vs_all")
 
-                classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
+                    base["GRUPO"] = "RESTANTE"
+                    base.loc[base["DEMANDA"] == dem_x, "GRUPO"] = f"X: {dem_x}"
 
-                # garante 3 classes por grupo
-                grupos = [f"X: {dem_x}", "RESTANTE"]
-                grid = (
-                    pd.DataFrame({"GRUPO": grupos}).assign(_k=1)
-                    .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
-                    .drop(columns="_k")
-                )
-                tab = grid.merge(tab, on=["GRUPO", "_CLASSE_"], how="left").fillna({"QTD": 0})
-                tab["QTD"] = tab["QTD"].astype(int)
+                    # Agrega: grupo x classe
+                    tab = (
+                        base.groupby(["GRUPO", "_CLASSE_"])
+                        .size()
+                        .reset_index(name="QTD")
+                    )
 
-                # % dentro do grupo (composição) — para tabela
-                total_grupo = tab.groupby("GRUPO")["QTD"].transform("sum").replace(0, 1)
-                tab["PCT_COMP"] = (tab["QTD"] / total_grupo * 100).round(1)
+                    classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
+                    grupos  = [f"X: {dem_x}", "RESTANTE"]
 
-                # total por grupo — para % em cima (participação de cada grupo no total geral)
-                tot_por_grupo = tab.groupby("GRUPO")["QTD"].sum().reset_index(name="TOTAL_GRUPO")
-                total_geral = int(tot_por_grupo["TOTAL_GRUPO"].sum()) or 1
-                tot_por_grupo["PCT_TOTAL"] = (tot_por_grupo["TOTAL_GRUPO"] / total_geral * 100).round(1)
+                    # garante 3 classes por grupo
+                    grid = (
+                        pd.DataFrame({"GRUPO": grupos}).assign(_k=1)
+                        .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
+                        .drop(columns="_k")
+                    )
+                    tab = grid.merge(tab, on=["GRUPO", "_CLASSE_"], how="left").fillna({"QTD": 0})
+                    tab["QTD"] = tab["QTD"].astype(int)
 
-                tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+                    # % dentro do grupo (composição) — para tabela
+                    total_grupo = tab.groupby("GRUPO")["QTD"].transform("sum").replace(0, 1)
+                    tab["PCT_COMP"] = (tab["QTD"] / total_grupo * 100).round(1)
 
-                fig = px.bar(
-                    tab,
-                    x="GRUPO",
-                    y="QTD",
-                    color="_CLASSE_",
-                    barmode="stack",
-                    template="plotly_dark",
-                    category_orders={"GRUPO": grupos, "_CLASSE_": classes},
-                    color_discrete_map={
-                        "PROCEDENTE": COR_PROC,
-                        "IMPROCEDENTE": COR_IMP,
-                        "OUTROS": COR_OUT,
-                    },
-                )
+                    # total por grupo — para % em cima (participação de cada grupo no total geral)
+                    tot_por_grupo = tab.groupby("GRUPO")["QTD"].sum().reset_index(name="TOTAL_GRUPO")
+                    total_geral = int(tot_por_grupo["TOTAL_GRUPO"].sum()) or 1
+                    tot_por_grupo["PCT_TOTAL"] = (tot_por_grupo["TOTAL_GRUPO"] / total_geral * 100).round(1)
 
-                # QTD dentro
-                fig.update_traces(text=tab["TXT_QTD"], textposition="inside", insidetextanchor="middle", cliponaxis=False)
+                    tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
 
-                # % em cima do TOTAL do grupo (participação no total geral)
-                y_max = int(tot_por_grupo["TOTAL_GRUPO"].max()) if int(tot_por_grupo["TOTAL_GRUPO"].max()) > 0 else 1
-                pad = y_max * 0.08
-                fig.add_scatter(
-                    x=tot_por_grupo["GRUPO"],
-                    y=tot_por_grupo["TOTAL_GRUPO"].astype(float) + pad,
-                    mode="text",
-                    text=[f"{p:.1f}%" for p in tot_por_grupo["PCT_TOTAL"]],
-                    textposition="middle center",
-                    showlegend=False,
-                    textfont=dict(size=12, family="Arial Black", color="white"),
-                    hoverinfo="skip",
-                )
+                    fig = px.bar(
+                        tab,
+                        x="GRUPO",
+                        y="QTD",
+                        color="_CLASSE_",
+                        barmode="stack",
+                        template="plotly_dark",
+                        category_orders={"GRUPO": grupos, "_CLASSE_": classes},
+                        color_discrete_map={
+                            "PROCEDENTE": COR_PROC,
+                            "IMPROCEDENTE": COR_IMP,
+                            "OUTROS": COR_OUT,
+                        },
+                    )
 
-                fig = _style_clean(fig)
-                fig = _legend_bottom(fig, y=-0.22)
-                fig.update_layout(margin=dict(l=10, r=220, t=30, b=80))
+                    # QTD dentro
+                    fig.update_traces(
+                        text=tab["TXT_QTD"],
+                        textposition="inside",
+                        insidetextanchor="middle",
+                        cliponaxis=False
+                    )
 
-                # === POSIÇÃO DO QUADRO (X vs RESTANTE) ===
-                BOX_X_DEM = 1.22  # (->) maior = mais DIREITA | menor = mais ESQUERDA
-                BOX_Y_DEM = 0.98  # (^) maior = mais CIMA    | menor = mais BAIXO
+                    # % em cima do TOTAL do grupo (participação no total geral)
+                    y_max = int(tot_por_grupo["TOTAL_GRUPO"].max()) if int(tot_por_grupo["TOTAL_GRUPO"].max()) > 0 else 1
+                    pad = y_max * 0.08
+                    fig.add_scatter(
+                        x=tot_por_grupo["GRUPO"],
+                        y=tot_por_grupo["TOTAL_GRUPO"].astype(float) + pad,
+                        mode="text",
+                        text=[f"{p:.1f}%" for p in tot_por_grupo["PCT_TOTAL"]],
+                        textposition="middle center",
+                        showlegend=False,
+                        textfont=dict(size=12, family="Arial Black", color="white"),
+                        hoverinfo="skip",
+                    )
 
-                proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
-                improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
-                outros_total = int(tab.loc[tab["_CLASSE_"] == "OUTROS", "QTD"].sum())
-                total_geral2 = proc_total + improc_total + outros_total
+                    fig = _style_clean(fig)
+                    fig = _legend_bottom(fig, y=-0.22)
+                    fig.update_layout(margin=dict(l=10, r=220, t=30, b=80))
 
-                fig = _add_summary_box(fig, proc_total, improc_total, outros_total, total_geral2, box_x=BOX_X_DEM, box_y=BOX_Y_DEM)
+                    # === POSIÇÃO DO QUADRO (X vs RESTANTE) ===
+                    BOX_X_DEM = 1.22  # (->) maior = mais DIREITA | menor = mais ESQUERDA
+                    BOX_Y_DEM = 0.98  # (^) maior = mais CIMA    | menor = mais BAIXO
 
-                st.plotly_chart(fig, use_container_width=True)
+                    proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
+                    improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
+                    outros_total = int(tab.loc[tab["_CLASSE_"] == "OUTROS", "QTD"].sum())
+                    total_geral2 = proc_total + improc_total + outros_total
 
-                # tabela (composição interna)
-                piv = (
-                    tab.pivot_table(index="GRUPO", columns="_CLASSE_", values="QTD", aggfunc="sum", fill_value=0)
-                    .reset_index()
-                )
-                for c in classes:
-                    if c not in piv.columns:
-                        piv[c] = 0
-                piv["TOTAL"] = piv["PROCEDENTE"] + piv["IMPROCEDENTE"] + piv["OUTROS"]
-                den = piv["TOTAL"].replace(0, 1)
-                piv["%PROCEDENTE"] = (piv["PROCEDENTE"] / den * 100).round(1)
-                piv["%IMPROCEDENTE"] = (piv["IMPROCEDENTE"] / den * 100).round(1)
-                piv["%OUTROS"] = (piv["OUTROS"] / den * 100).round(1)
+                    fig = _add_summary_box(
+                        fig,
+                        proc_total, improc_total, outros_total, total_geral2,
+                        box_x=BOX_X_DEM, box_y=BOX_Y_DEM
+                    )
 
-                st.dataframe(piv, hide_index=True, use_container_width=True)
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    # tabela (composição interna)
+                    piv = (
+                        tab.pivot_table(index="GRUPO", columns="_CLASSE_", values="QTD", aggfunc="sum", fill_value=0)
+                        .reset_index()
+                    )
+                    for c in classes:
+                        if c not in piv.columns:
+                            piv[c] = 0
+                    piv["TOTAL"] = piv["PROCEDENTE"] + piv["IMPROCEDENTE"] + piv["OUTROS"]
+
+                    den = piv["TOTAL"].replace(0, 1)
+                    piv["%PROCEDENTE"]    = (piv["PROCEDENTE"] / den * 100).round(1)
+                    piv["%IMPROCEDENTE"]  = (piv["IMPROCEDENTE"] / den * 100).round(1)
+                    piv["%OUTROS"]        = (piv["OUTROS"] / den * 100).round(1)
+
+                    st.dataframe(piv, hide_index=True, use_container_width=True)
 
 
 
