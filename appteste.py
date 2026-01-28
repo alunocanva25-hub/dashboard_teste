@@ -1023,85 +1023,240 @@ st.download_button(
 )
 
 # ======================================================
-# PARTE 2/2 — RELATÓRIOS AVANÇADOS
+# RELATÓRIOS GERENCIAIS (ROBUSTO)
 # ======================================================
 
-COR_PROC = "#2e7d32"
-COR_IMP  = "#c62828"
-COR_OUT  = "#546e7a"
+def _col_ok(c):
+    return c is not None and str(c).strip() != ""
 
-def classificar_resultado(df):
-    df = df.copy()
-    df["_CLASSE_"] = "OUTROS"
-    df.loc[df["_RES_"].str.contains("PROCED", na=False), "_CLASSE_"] = "PROCEDENTE"
-    df.loc[df["_RES_"].str.contains("IMPROCED", na=False), "_CLASSE_"] = "IMPROCEDENTE"
-    return df
+def _norm_upper(s: pd.Series) -> pd.Series:
+    return s.astype(str).str.upper().str.strip()
 
-st.markdown('<div class="card"><div class="card-title">RELATÓRIOS GERENCIAIS</div>', unsafe_allow_html=True)
+def _classificar_resultado(df_):
+    d = df_.copy()
+    d["_CLASSE_"] = "OUTROS"
+    d.loc[d["_RES_"].str.contains("IMPROCED", na=False), "_CLASSE_"] = "IMPROCEDENTE"
+    d.loc[d["_RES_"].str.contains("PROCED", na=False), "_CLASSE_"] = "PROCEDENTE"
+    return d
 
-tabs = st.tabs([
-    "📍 Regional",
-    "🗺️ Estado (UF)",
-    "📅 Comparativo Anual"
-])
+st.markdown(
+    '<div class="card"><div class="card-title">RELATÓRIOS GERENCIAIS</div>',
+    unsafe_allow_html=True
+)
 
-# ======================================================
-# TAB 1 — REGIONAL
-# ======================================================
-with tabs[0]:
-    st.subheader("Relatório por Regional")
-    regional_sel = st.selectbox("Regional", sorted(df_periodo[COL_REGIONAL].dropna().unique()))
-    base = classificar_resultado(df_periodo[df_periodo[COL_REGIONAL] == regional_sel])
+if "show_relatorios" not in st.session_state:
+    st.session_state.show_relatorios = False
 
-    resumo = base.groupby("_CLASSE_").size().reset_index(name="QTD")
+cbtn, cinfo = st.columns([1.2, 4.8])
+with cbtn:
+    if st.button("📑 Abrir / Fechar Relatórios"):
+        st.session_state.show_relatorios = not st.session_state.show_relatorios
+with cinfo:
+    st.caption("Relatórios respeitam o período/UF selecionados. O comparativo anual usa a base completa.")
 
-    fig = px.bar(
-        resumo, x="_CLASSE_", y="QTD", text="QTD",
-        color="_CLASSE_", color_discrete_map={
-            "PROCEDENTE": COR_PROC, "IMPROCEDENTE": COR_IMP, "OUTROS": COR_OUT
-        }
+if st.session_state.show_relatorios:
+
+    tab_reg, tab_uf, tab_ano = st.tabs(
+        ["📍 Regional", "🗺️ Estado (UF)", "📅 Comparativo Anual"]
     )
-    st.plotly_chart(fig, use_container_width=True)
-    st.dataframe(resumo, hide_index=True)
 
-# ======================================================
-# TAB 2 — UF
-# ======================================================
-with tabs[1]:
-    st.subheader("Relatório por Estado (UF)")
-    base = classificar_resultado(df_periodo)
+    # ==================================================
+    # TAB 1 — REGIONAL
+    # ==================================================
+    with tab_reg:
+        st.subheader("Relatório por Regional")
 
-    tab = base.pivot_table(
-        index=COL_ESTADO, columns="_CLASSE_", values="_CLASSE_", aggfunc="count", fill_value=0
-    ).reset_index()
+        if not _col_ok(COL_REGIONAL):
+            st.warning("Coluna REGIONAL não encontrada.")
+        else:
+            base = df_periodo.dropna(subset=[COL_REGIONAL]).copy()
+            if base.empty:
+                st.info("Sem dados de regional no período selecionado.")
+            else:
+                base[COL_REGIONAL] = _norm_upper(base[COL_REGIONAL])
+                base = _classificar_resultado(base)
 
-    fig = px.bar(
-        tab, x=COL_ESTADO, y=["PROCEDENTE","IMPROCEDENTE","OUTROS"],
-        barmode="stack"
-    )
-    st.plotly_chart(fig, use_container_width=True)
-    st.dataframe(tab, use_container_width=True)
+                regionais = sorted(base[COL_REGIONAL].unique().tolist())
+                reg_sel = st.selectbox(
+                    "Regional",
+                    ["Todas"] + regionais,
+                    index=0,
+                )
 
-# ======================================================
-# TAB 3 — COMPARATIVO ANUAL
-# ======================================================
-with tabs[2]:
-    st.subheader("Comparativo Anual – Procedente x Improcedente")
+                modo = st.selectbox(
+                    "Modo do relatório",
+                    ["Por Resultado", "Ranking de Regionais"],
+                    index=0,
+                )
 
-    base = classificar_resultado(df)
-    base["ANO"] = pd.to_datetime(base[COL_DATA], errors="coerce").dt.year
+                rec = base if reg_sel == "Todas" else base[base[COL_REGIONAL] == reg_sel]
 
-    comp = base[base["_CLASSE_"].isin(["PROCEDENTE","IMPROCEDENTE"])]
-    comp = comp.groupby(["ANO","_CLASSE_"]).size().reset_index(name="QTD")
+                if modo == "Por Resultado":
+                    tab = (
+                        rec.groupby("_CLASSE_")
+                        .size()
+                        .reindex(["PROCEDENTE", "IMPROCEDENTE", "OUTROS"], fill_value=0)
+                        .reset_index(name="QTD")
+                    )
 
-    fig = px.bar(
-        comp, x="ANO", y="QTD", color="_CLASSE_", barmode="group",
-        color_discrete_map={"PROCEDENTE": COR_PROC, "IMPROCEDENTE": COR_IMP}
-    )
-    st.plotly_chart(fig, use_container_width=True)
-    st.dataframe(comp, hide_index=True)
+                    fig = px.bar(
+                        tab,
+                        x="_CLASSE_",
+                        y="QTD",
+                        text="QTD",
+                        color="_CLASSE_",
+                        template="plotly_dark",
+                        color_discrete_map={
+                            "PROCEDENTE": COR_PROC,
+                            "IMPROCEDENTE": COR_IMP,
+                            "OUTROS": COR_OUT,
+                        },
+                    )
+                    fig.update_traces(textposition="outside", cliponaxis=False)
+                    fig.update_layout(height=320, showlegend=False)
+
+                    st.plotly_chart(fig, use_container_width=True)
+                    st.dataframe(tab, hide_index=True, use_container_width=True)
+
+                else:
+                    tab = (
+                        base.groupby(COL_REGIONAL)
+                        .size()
+                        .reset_index(name="TOTAL")
+                        .sort_values("TOTAL", ascending=False)
+                    )
+
+                    fig = px.bar(
+                        tab.head(15).sort_values("TOTAL"),
+                        x="TOTAL",
+                        y=COL_REGIONAL,
+                        orientation="h",
+                        text="TOTAL",
+                        template="plotly_dark",
+                    )
+                    fig.update_traces(textposition="outside", cliponaxis=False)
+                    fig.update_layout(height=420, showlegend=False)
+
+                    st.plotly_chart(fig, use_container_width=True)
+                    st.dataframe(tab, hide_index=True, use_container_width=True)
+
+    # ==================================================
+    # TAB 2 — ESTADO (UF)
+    # ==================================================
+    with tab_uf:
+        st.subheader("Relatório por Estado (UF)")
+
+        if not _col_ok(COL_ESTADO):
+            st.warning("Coluna ESTADO / UF não encontrada.")
+        else:
+            base = df_periodo.dropna(subset=[COL_ESTADO]).copy()
+            if base.empty:
+                st.info("Sem dados de UF no período selecionado.")
+            else:
+                base[COL_ESTADO] = _norm_upper(base[COL_ESTADO])
+                base = _classificar_resultado(base)
+
+                tab = (
+                    base.groupby([COL_ESTADO, "_CLASSE_"])
+                    .size()
+                    .unstack(fill_value=0)
+                    .reset_index()
+                )
+
+                for c in ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]:
+                    if c not in tab.columns:
+                        tab[c] = 0
+
+                tab["TOTAL"] = tab["PROCEDENTE"] + tab["IMPROCEDENTE"] + tab["OUTROS"]
+                tab = tab.sort_values("TOTAL", ascending=False)
+
+                melted = tab.melt(
+                    id_vars=[COL_ESTADO],
+                    value_vars=["PROCEDENTE", "IMPROCEDENTE", "OUTROS"],
+                    var_name="RESULTADO",
+                    value_name="QTD",
+                )
+
+                fig = px.bar(
+                    melted,
+                    x=COL_ESTADO,
+                    y="QTD",
+                    color="RESULTADO",
+                    barmode="stack",
+                    text="QTD",
+                    template="plotly_dark",
+                    color_discrete_map={
+                        "PROCEDENTE": COR_PROC,
+                        "IMPROCEDENTE": COR_IMP,
+                        "OUTROS": COR_OUT,
+                    },
+                )
+                fig.update_traces(textposition="outside", cliponaxis=False)
+                fig.update_layout(height=420, xaxis_title="", yaxis_title="")
+
+                st.plotly_chart(fig, use_container_width=True)
+                st.dataframe(tab, hide_index=True, use_container_width=True)
+
+    # ==================================================
+    # TAB 3 — COMPARATIVO ANUAL
+    # ==================================================
+    with tab_ano:
+        st.subheader("Comparativo Anual — Procedente x Improcedente")
+
+        if not _col_ok(COL_DATA):
+            st.warning("Coluna DATA não encontrada.")
+        else:
+            base = df.copy()
+            base[COL_DATA] = pd.to_datetime(base[COL_DATA], errors="coerce", dayfirst=True)
+            base = base.dropna(subset=[COL_DATA]).copy()
+
+            if base.empty:
+                st.info("Sem datas válidas para gerar o comparativo.")
+            else:
+                base = _classificar_resultado(base)
+                base["ANO"] = base[COL_DATA].dt.year.astype(int)
+
+                if _col_ok(COL_ESTADO):
+                    base[COL_ESTADO] = _norm_upper(base[COL_ESTADO])
+                    ufs = ["TOTAL"] + sorted(base[COL_ESTADO].unique().tolist())
+                    uf_comp = st.selectbox(
+                        "Filtrar UF (opcional)",
+                        options=ufs,
+                        index=ufs.index(uf_sel) if uf_sel in ufs else 0,
+                    )
+                    if uf_comp != "TOTAL":
+                        base = base[base[COL_ESTADO] == uf_comp]
+
+                comp = base[base["_CLASSE_"].isin(["PROCEDENTE", "IMPROCEDENTE"])]
+
+                tab = (
+                    comp.groupby(["ANO", "_CLASSE_"])
+                    .size()
+                    .reset_index(name="QTD")
+                    .sort_values(["ANO", "_CLASSE_"])
+                )
+
+                fig = px.bar(
+                    tab,
+                    x="ANO",
+                    y="QTD",
+                    color="_CLASSE_",
+                    barmode="group",
+                    text="QTD",
+                    template="plotly_dark",
+                    color_discrete_map={
+                        "PROCEDENTE": COR_PROC,
+                        "IMPROCEDENTE": COR_IMP,
+                    },
+                )
+                fig.update_traces(textposition="outside", cliponaxis=False)
+                fig.update_layout(height=360)
+
+                st.plotly_chart(fig, use_container_width=True)
+                st.dataframe(tab, hide_index=True, use_container_width=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 # ======================================================
