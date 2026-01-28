@@ -1445,7 +1445,7 @@ with tab_ano:
 
                 fig.add_annotation(
                     xref="paper", yref="paper",
-                    x=1.22, y=0.98,          # “mais à direita” (fora da área do plot, mas dentro da figura)
+                    x=1.22, y=0.80,          # “mais à direita” (fora da área do plot, mas dentro da figura)
                     xanchor="right", yanchor="top",
                     text=txt,
                     showarrow=False,
