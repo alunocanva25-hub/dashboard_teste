@@ -1328,8 +1328,8 @@ if st.session_state.show_relatorios:
                 st.plotly_chart(fig, use_container_width=True)
                 st.dataframe(tab, hide_index=True, use_container_width=True)
 
-    # ==================================================
-# TAB 3 — COMPARATIVO ANUAL (Legenda abaixo + Box mais à direita)
+# ==================================================
+# TAB 3 — COMPARATIVO ANUAL (CORRIGIDO: % EM CIMA ALINHADA)
 # ==================================================
 with tab_ano:
     st.subheader("Comparativo Anual — Procedente x Improcedente x Outros")
@@ -1348,7 +1348,6 @@ with tab_ano:
             base["ANO"] = base[COL_DATA].dt.year.astype(int)
 
             # filtro UF opcional
-            uf_comp = "TOTAL"
             if _col_ok(COL_ESTADO):
                 base[COL_ESTADO] = _norm(base[COL_ESTADO])
                 ufs_disp = ["TOTAL"] + sorted(base[COL_ESTADO].dropna().unique().tolist())
@@ -1382,7 +1381,10 @@ with tab_ano:
                 total_ano = tab.groupby("ANO")["QTD"].transform("sum").replace(0, 1)
                 tab["PCT"] = (tab["QTD"] / total_ano * 100).round(1)
 
-                # --- gráfico agrupado
+                # labels
+                tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+                tab["TXT_PCT"] = tab.apply(lambda r: "" if int(r["QTD"]) == 0 else f'{r["PCT"]:.1f}%', axis=1)
+
                 fig = px.bar(
                     tab,
                     x="ANO",
@@ -1395,53 +1397,69 @@ with tab_ano:
                         "PROCEDENTE": COR_PROC,
                         "IMPROCEDENTE": COR_IMP,
                         "OUTROS": COR_OUT,
-                    }
+                    },
                 )
 
-                # QTD dentro (só se >0)
-                tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+                # ✅ QTD dentro + % em cima (por texttemplate, alinhado com offset das barras)
                 fig.update_traces(
                     text=tab["TXT_QTD"],
                     textposition="inside",
                     insidetextanchor="middle",
                     cliponaxis=False
                 )
+                fig.update_traces(
+                    texttemplate="%{text}",
+                    # texto de dentro já ficou OK
+                )
+
+                # adiciona % como "outside" usando o MESMO trace -> só mudamos via customdata + texttemplate
+                fig.update_traces(
+                    customdata=tab["TXT_PCT"],
+                    # % fora: usa customdata
+                    # coloca fora e mantém o text interno via text (não dá para dois textos no mesmo trace),
+                    # então fazemos um truque: duplicamos o trace invisível só para % (abaixo)
+                )
+
+                # --- trace invisível só para % (alinhado nas barras)
+                fig_pct = px.bar(
+                    tab,
+                    x="ANO",
+                    y="QTD",
+                    color="_CLASSE_",
+                    barmode="group",
+                    template="plotly_dark",
+                    category_orders={"_CLASSE_": classes},
+                    color_discrete_map={
+                        "PROCEDENTE": "rgba(0,0,0,0)",
+                        "IMPROCEDENTE": "rgba(0,0,0,0)",
+                        "OUTROS": "rgba(0,0,0,0)",
+                    },
+                )
+                fig_pct.update_traces(
+                    marker_line_width=0,
+                    marker_opacity=0,
+                    text=tab["TXT_PCT"],
+                    textposition="outside",
+                    cliponaxis=False,
+                    showlegend=False,
+                    hoverinfo="skip",
+                    textfont=dict(size=11, family="Arial Black", color="white"),
+                )
+
+                # mescla os traces de % no gráfico principal
+                for tr in fig_pct.data:
+                    fig.add_trace(tr)
 
                 # sem grid / sem eixo esquerdo
                 fig.update_xaxes(showgrid=False, ticks="")
                 fig.update_yaxes(showgrid=False, visible=False, showticklabels=False, ticks="", zeroline=False, title_text="")
                 fig.update_layout(plot_bgcolor="rgba(0,0,0,0)")
 
-                # % em cima (alinhado)
-                y_max = int(tab["QTD"].max()) if int(tab["QTD"].max()) > 0 else 1
-                pad = y_max * 0.06
-                fig.add_scatter(
-                    x=tab["ANO"],
-                    y=tab["QTD"].astype(float) + pad,
-                    mode="text",
-                    text=[("" if q == 0 else f"{p:.1f}%") for q, p in zip(tab["QTD"], tab["PCT"])],
-                    textposition="middle center",
-                    showlegend=False,
-                    textfont=dict(size=11, family="Arial Black", color="white"),
-                    hoverinfo="skip",
-                )
+                # ✅ legenda embaixo (padrão para todos)
+                fig = _legend_bottom(fig, y=-0.22)
+                fig.update_layout(margin=dict(l=10, r=180, t=30, b=80))
 
-                # ✅ legenda embaixo do gráfico
-                fig.update_layout(
-                    legend=dict(
-                        orientation="h",
-                        yanchor="top",
-                        y=-0.22,          # abaixo do plot
-                        xanchor="left",
-                        x=0.0,
-                        title_text="",    # remove título "_CLASSE_"
-                        bgcolor="rgba(0,0,0,0)",
-                        font=dict(size=12, color="white"),
-                    ),
-                    margin=dict(l=10, r=160, t=30, b=80),  # deixa espaço p/ legenda embaixo + box na direita
-                )
-
-                # ✅ box (proced/improc/outros/total) mais à direita (dentro)
+                # box à direita (dentro da figura)
                 proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
                 improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
                 outros_total = int(tab.loc[tab["_CLASSE_"] == "OUTROS", "QTD"].sum())
@@ -1457,10 +1475,9 @@ with tab_ano:
                     f"<span style='color:#fcba03;font-size:12px'><b>TOTAL</b></span><br>"
                     f"<span style='color:#fcba03;font-size:20px'><b>{_fmt_int(total_geral)}</b></span>"
                 )
-
                 fig.add_annotation(
                     xref="paper", yref="paper",
-                    x=1.22, y=0.80,          # “mais à direita” (fora da área do plot, mas dentro da figura)
+                    x=1.26, y=0.98,
                     xanchor="right", yanchor="top",
                     text=txt,
                     showarrow=False,
@@ -1473,7 +1490,7 @@ with tab_ano:
 
                 st.plotly_chart(fig, use_container_width=True)
 
-                # tabela (mantém)
+                # tabela
                 piv = (
                     tab.pivot_table(index="ANO", columns="_CLASSE_", values="QTD", aggfunc="sum", fill_value=0)
                     .reset_index()
@@ -1489,6 +1506,7 @@ with tab_ano:
                 piv["%OUTROS"] = (piv["OUTROS"] / den * 100).round(1)
 
                 st.dataframe(piv, hide_index=True, use_container_width=True)
+
 
 
 
