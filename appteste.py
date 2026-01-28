@@ -1106,6 +1106,21 @@ def _add_summary_box_inside_fig(fig, proc, improc, outros, total):
     )
     return fig
 
+def _legend_bottom(fig, y=-0.22, font_size=12):
+    fig.update_layout(
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=y,
+            xanchor="left",
+            x=0.0,
+            title_text="",
+            bgcolor="rgba(0,0,0,0)",
+            font=dict(size=font_size, color="white"),
+        )
+    )
+    return fig
+
 
 # ------------------------------------------------------
 # UI do bloco
