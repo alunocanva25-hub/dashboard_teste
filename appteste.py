@@ -1163,7 +1163,7 @@ if st.session_state.show_relatorios:
                 )
 
                 # posição do box (regional)
-                BOX_X_REG = 1.18  # <-- mova p/ direita/esquerda
+                BOX_X_REG = 1.0  # <-- mova p/ direita/esquerda
                 BOX_Y_REG = 0.98  # <-- mova p/ cima/baixo
 
                 if modo == "Uma regional (detalhe por resultado)":
