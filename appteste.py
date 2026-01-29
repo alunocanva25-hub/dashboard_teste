@@ -1239,9 +1239,6 @@ with st.expander("📊 RELATÓRIOS GERENCIAIS", expanded=True):
 
 
 
-
-
-
 # ======================================================
 # EXPORTAR DASHBOARD (PRINT PARA PDF) - OPÇÃO A
 # ======================================================
