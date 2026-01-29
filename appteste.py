@@ -1714,145 +1714,166 @@ if st.session_state.show_relatorios:
 
                     st.dataframe(piv, hide_index=True, use_container_width=True)
 
-    # ==================================================
-    # TAB 4 — DISTRIBUIDORA POR MÊS (UF por facet)
-    # ==================================================
-    with tab_dist_mes:
-        st.subheader("Distribuidora por Mês")
+   # ==================================================
+# ✅ TAB 4: 📆 DISTRIBUIDORA POR MÊS
+# - Ajuste SOMENTE dos TÍTULOS (Estados) para não atrapalhar os meses
+# - Remove "LOCALIDADE=" / "COL_ESTADO="
+# - Desce/sobe título com variável (comentado)
+# ==================================================
+with tab_dist_mes:
+    st.subheader("Distribuidora por Mês")
 
-        if (COL_DATA is None) or (COL_ESTADO is None):
-            st.warning("Preciso das colunas DATA e ESTADO/UF.")
+    if (COL_DATA is None) or (COL_ESTADO is None):
+        st.warning("Preciso das colunas DATA e ESTADO/UF.")
+    else:
+        base = df_periodo.copy()
+        base[COL_DATA] = pd.to_datetime(base[COL_DATA], errors="coerce", dayfirst=True)
+        base = base.dropna(subset=[COL_DATA]).copy()
+
+        if base.empty:
+            st.info("Sem dados com DATA válida no período.")
         else:
-            base = df_periodo.copy()
-            base[COL_DATA] = pd.to_datetime(base[COL_DATA], errors="coerce", dayfirst=True)
-            base = base.dropna(subset=[COL_DATA, COL_ESTADO]).copy()
-
-            if base.empty:
-                st.info("Sem dados com DATA válida no período.")
-            else:
+            # Garante _CLASSE_ (usa seu classificador do script principal)
+            if "_CLASSE_" not in base.columns:
                 base = _classificar(base)
-                base[COL_ESTADO] = _norm(base[COL_ESTADO])
 
-                anos = sorted(base[COL_DATA].dt.year.dropna().unique().astype(int).tolist())
-                ano_sel2 = st.selectbox("Ano", anos, index=len(anos)-1 if anos else 0, key="dist_mes_ano")
+            # Apenas as classes usadas (sem OUTROS)
+            base = base[base["_CLASSE_"].isin(["PROCEDENTE", "IMPROCEDENTE"])].copy()
 
-                base = base[base[COL_DATA].dt.year == int(ano_sel2)].copy()
-                if base.empty:
-                    st.info("Sem dados para este ano.")
-                else:
-                    top_n = st.slider("Top N estados", 3, 30, 10, key="dist_mes_topn")
-                    top = (
-                        base.groupby(COL_ESTADO).size()
-                        .sort_values(ascending=False)
-                        .head(top_n).index.tolist()
-                    )
-                    base = base[base[COL_ESTADO].isin(top)].copy()
+            base[COL_ESTADO] = base[COL_ESTADO].astype(str).str.upper().str.strip()
 
-                    base["MES_NUM"] = base[COL_DATA].dt.month
-                    base["MÊS"] = base["MES_NUM"].map(MESES_ABREV)
+            # Meses abreviados
+            MESES_ABREV = {
+                1: "jan", 2: "fev", 3: "mar", 4: "abr", 5: "mai", 6: "jun",
+                7: "jul", 8: "ago", 9: "set", 10: "out", 11: "nov", 12: "dez"
+            }
+            MESES_ORDEM = [MESES_ABREV[i] for i in range(1, 13)]
 
-                    tab = (
-                        base.groupby(["MES_NUM", "MÊS", COL_ESTADO, "_CLASSE_"])
-                        .size()
-                        .reset_index(name="QTD")
-                    )
-                    if tab.empty:
-                        st.info("Sem dados para este recorte.")
-                    else:
-                        classes = ["PROCEDENTE", "IMPROCEDENTE"]
+            anos = sorted(base[COL_DATA].dt.year.dropna().unique().astype(int).tolist())
+            ano_sel2 = st.selectbox(
+                "Ano",
+                anos,
+                index=len(anos) - 1 if anos else 0,
+                key="dist_mes_ano"
+            )
 
-                        # Garante 12 meses + classes por estado
-                        meses_df = pd.DataFrame({"MES_NUM": list(range(1, 13))})
-                        meses_df["MÊS"] = meses_df["MES_NUM"].map(MESES_ABREV)
+            base = base[base[COL_DATA].dt.year == int(ano_sel2)].copy()
 
-                        grid = (
-                            meses_df.assign(_k=1)
-                            .merge(pd.DataFrame({COL_ESTADO: top}).assign(_k=1), on="_k")
-                            .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
-                            .drop(columns="_k")
-                        )
+            top_n = st.slider("Top N estados", 3, 30, 10, key="dist_mes_topn")
+            top = (
+                base.groupby(COL_ESTADO).size()
+                .sort_values(ascending=False)
+                .head(top_n).index.tolist()
+            )
+            base = base[base[COL_ESTADO].isin(top)].copy()
 
-                        tab = (
-                            grid.merge(tab, on=["MES_NUM", "MÊS", COL_ESTADO, "_CLASSE_"], how="left")
-                            .fillna({"QTD": 0})
-                        )
-                        tab["QTD"] = tab["QTD"].astype(int)
-                        tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+            base["MES_NUM"] = base[COL_DATA].dt.month
+            base["MÊS"] = base["MES_NUM"].map(MESES_ABREV)
 
-                        fig = px.bar(
-                            tab.sort_values("MES_NUM"),
-                            x="MÊS",
-                            y="QTD",
-                            color="_CLASSE_",
-                            barmode="stack",
-                            facet_col=COL_ESTADO,
-                            facet_col_wrap=2,
-                            template="plotly_dark",
-                            category_orders={"MÊS": MESES_ABREV_ORDEM, "_CLASSE_": classes},
-                            color_discrete_map={"PROCEDENTE": COR_PROC, "IMPROCEDENTE": COR_IMP},
-                        )
+            tab = (
+                base.groupby(["MES_NUM", "MÊS", COL_ESTADO, "_CLASSE_"])
+                .size()
+                .reset_index(name="QTD")
+            )
 
-                        # QTD dentro
-                        fig.update_traces(
-                            text=tab["TXT_QTD"],
-                            textposition="inside",
-                            insidetextanchor="middle",
-                            cliponaxis=False
-                        )
+            if tab.empty:
+                st.info("Sem dados para este ano/top N.")
+            else:
+                classes = ["PROCEDENTE", "IMPROCEDENTE"]
 
-                        # Meses visíveis em TODOS os facets + sem grades
-                        fig.for_each_xaxis(lambda a: a.update(
-                            showgrid=False,
-                            ticks="",
-                            tickmode="array",
-                            tickvals=MESES_ABREV_ORDEM,
-                            ticktext=MESES_ABREV_ORDEM,
-                            tickangle=0,
-                            showticklabels=True
-                        ))
-                        fig.for_each_yaxis(lambda a: a.update(
-                            visible=False,
-                            showticklabels=False,
-                            showgrid=False,
-                            zeroline=False
-                        ))
+                # Garante 12 meses + classes por estado
+                meses_df = pd.DataFrame({"MES_NUM": list(range(1, 13))})
+                meses_df["MÊS"] = meses_df["MES_NUM"].map(MESES_ABREV)
 
-                        # Legenda embaixo + margens
-                        fig.update_layout(
-                            legend=dict(
-                                orientation="h",
-                                yanchor="top",
-                                y=-0.18,
-                                xanchor="left",
-                                x=0.0,
-                                title_text=""
-                            ),
-                            plot_bgcolor="rgba(0,0,0,0)",
-                            margin=dict(l=10, r=220, t=60, b=95),
-                        )
+                grid = (
+                    meses_df.assign(_k=1)
+                    .merge(pd.DataFrame({COL_ESTADO: top}).assign(_k=1), on="_k")
+                    .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
+                    .drop(columns="_k")
+                )
 
-                        # AJUSTE FINO DOS TÍTULOS DOS ESTADOS (FACETS)
-                        # - FACET_TITLE_Y: ↓ diminua para descer | ↑ aumente para subir
-                        FACET_TITLE_Y = 0.42
-                        FACET_FONT_SIZE = 13
+                tab = (
+                    grid.merge(tab, on=["MES_NUM", "MÊS", COL_ESTADO, "_CLASSE_"], how="left")
+                    .fillna({"QTD": 0})
+                )
+                tab["QTD"] = tab["QTD"].astype(int)
+                tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
 
-                        for ann in fig.layout.annotations:
-                            if ann.text and "=" in ann.text:
-                                ann.text = ann.text.split("=", 1)[1]  # só UF
-                            ann.xanchor = "center"
-                            ann.yanchor = "bottom"
-                            ann.y = FACET_TITLE_Y
-                            ann.font = dict(size=FACET_FONT_SIZE, color="white", family="Arial Black")
+                fig = px.bar(
+                    tab.sort_values("MES_NUM"),
+                    x="MÊS",
+                    y="QTD",
+                    color="_CLASSE_",
+                    barmode="stack",
+                    facet_col=COL_ESTADO,
+                    facet_col_wrap=2,
+                    template="plotly_dark",
+                    category_orders={"MÊS": MESES_ORDEM, "_CLASSE_": classes},
+                    color_discrete_map={
+                        "PROCEDENTE": COR_PROC,
+                        "IMPROCEDENTE": COR_IMP,
+                    }
+                )
 
-                        # Quadro (total do recorte inteiro)
-                        BOX_X_DM = 1.18  # -> direita/esquerda
-                        BOX_Y_DM = 0.98  # -> cima/baixo
-                        proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
-                        improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
-                        total_all = proc_total + improc_total
-                        fig = _add_summary_box(fig, proc_total, improc_total, total_all, box_x=BOX_X_DM, box_y=BOX_Y_DM)
+                # QTD dentro
+                fig.update_traces(
+                    text=tab["TXT_QTD"],
+                    textposition="inside",
+                    insidetextanchor="middle",
+                    cliponaxis=False
+                )
 
-                        st.plotly_chart(fig, use_container_width=True)
+                # Meses visíveis em TODOS os facets + sem grades
+                fig.for_each_xaxis(lambda a: a.update(
+                    showgrid=False,
+                    ticks="",
+                    tickmode="array",
+                    tickvals=MESES_ORDEM,
+                    ticktext=MESES_ORDEM,
+                    tickangle=0,
+                    showticklabels=True
+                ))
+                fig.for_each_yaxis(lambda a: a.update(
+                    visible=False,
+                    showticklabels=False,
+                    showgrid=False,
+                    zeroline=False
+                ))
+
+                # Legenda embaixo (padrão)
+                fig.update_layout(
+                    legend=dict(
+                        orientation="h",
+                        yanchor="top",
+                        y=-0.18,
+                        xanchor="left",
+                        x=0.0,
+                        title_text=""
+                    ),
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    margin=dict(l=10, r=10, t=70, b=95),
+                )
+
+                # ==================================================
+                # ✅ AJUSTE DOS TÍTULOS (ESTADOS) — NÃO ATRAPALHA MESES
+                # ==================================================
+                # COMO AJUSTAR (se precisar):
+                TIT_Y_SHIFT = 0.06   # ↑ aumenta -> sobe o título | ↓ diminui -> desce o título
+                TIT_FONTSZ  = 13     # tamanho fonte do estado
+
+                for ann in fig.layout.annotations:
+                    # anotações dos facets vêm como "COL_ESTADO=PARÁ" ou similar
+                    if ann.text and "=" in ann.text:
+                        ann.text = ann.text.split("=", 1)[1]  # fica só "PARÁ", "MARANHÃO"...
+                        ann.text = ann.text.strip()
+
+                        # move um pouquinho pra cima usando o y original do facet
+                        ann.y = min(1.0, (ann.y or 0) + TIT_Y_SHIFT)
+                        ann.yanchor = "bottom"
+                        ann.xanchor = "center"
+                        ann.font = dict(size=TIT_FONTSZ, color="white", family="Arial Black")
+
+                st.plotly_chart(fig, use_container_width=True)
 
     # ==================================================
     # TAB 5 — DEMANDA x DEMANDAS (GERAL) (X vs RESTANTE)
@@ -1972,105 +1993,208 @@ if st.session_state.show_relatorios:
 
                         st.plotly_chart(fig, use_container_width=True)
 
-    # ==================================================
-    # TAB 6 — DEMANDA x DEMANDAS (UF) (NOVO)
-    # ==================================================
-    with tab_demanda_uf:
-        st.subheader("Demanda x Demandas (UF) — DEMANDA SOLICITADA (X vs RESTANTE)")
+ # ==================================================
+# ✅TAB 6: 🧾 DEMANDA x DEMANDAS (UF)
+# - Escolhe "DEMANDA SOLICITADA" (X) e compara vs RESTANTE por UF
+# - Filtro AM / AS só aqui
+# - QTD dentro, % em cima (por UF), legenda embaixo, quadro totais direita
+# - Sem OUTROS
+# ==================================================
+with tab_demanda_uf:
+    st.subheader("Demanda x Demandas (UF) — X vs Restante (por UF)")
 
-        COL_DEMANDA_LOCAL = achar_coluna(df, ["DEMANDA SOLICITADA", "DEMANDA_SOLICITADA", "DEMANDA"])
-        if COL_DEMANDA_LOCAL is None:
-            st.warning("Coluna 'DEMANDA SOLICITADA' não encontrada.")
-        elif not _col_ok(COL_ESTADO):
-            st.warning("Coluna UF/ESTADO não encontrada.")
+    # filtro só neste relatório
+    opt_tipo = st.radio(
+        "Tipo de nota (somente neste relatório)",
+        options=["Apenas AM", "Apenas AS", "AM + AS (todas)"],
+        index=0,
+        horizontal=True,
+        key="dem_uf_tipo_filtro"
+    )
+
+    COL_DEMANDA_LOCAL = achar_coluna(df, ["DEMANDA SOLICITADA", "DEMANDA_SOLICITADA", "DEMANDA"])
+    COL_TIPO_LOCAL    = achar_coluna(df, ["TIPO", "TIPO_NOTA", "TIPO DE NOTA"])
+
+    if COL_DEMANDA_LOCAL is None:
+        st.warning("Coluna 'DEMANDA SOLICITADA' não encontrada.")
+    elif COL_ESTADO is None:
+        st.warning("Coluna UF/ESTADO não encontrada.")
+    elif COL_TIPO_LOCAL is None:
+        st.warning("Coluna TIPO não encontrada (preciso dela para filtrar AM/AS).")
+    else:
+        base = df_periodo.copy()
+
+        # garante _CLASSE_
+        if "_CLASSE_" not in base.columns:
+            base = _classificar(base)
+
+        # só duas classes (sem OUTROS)
+        base = base[base["_CLASSE_"].isin(["PROCEDENTE", "IMPROCEDENTE"])].copy()
+
+        base = base.dropna(subset=[COL_DEMANDA_LOCAL, COL_ESTADO]).copy()
+        if base.empty:
+            st.info("Sem dados no período.")
         else:
-            base = df_periodo.copy()
-            base = base.dropna(subset=[COL_DEMANDA_LOCAL, COL_ESTADO]).copy()
+            # filtro AM/AS
+            tipo = base[COL_TIPO_LOCAL].astype(str).str.upper().str.strip()
+            if opt_tipo == "Apenas AM":
+                base = base[tipo.str.contains(r"\bAM\b", na=False)].copy()
+            elif opt_tipo == "Apenas AS":
+                base = base[tipo.str.contains(r"\bAS\b", na=False)].copy()
 
             if base.empty:
-                st.info("Sem dados no período.")
+                st.info("Sem dados para o filtro escolhido (AM/AS) neste período.")
             else:
-                base = _classificar(base)
-                base["DEMANDA"] = _norm(base[COL_DEMANDA_LOCAL])
-                base[COL_ESTADO] = _norm(base[COL_ESTADO])
+                base["UF"] = base[COL_ESTADO].astype(str).str.upper().str.strip()
+                base["DEMANDA"] = base[COL_DEMANDA_LOCAL].astype(str).str.upper().str.strip()
 
                 demandas_disp = sorted(base["DEMANDA"].dropna().unique().tolist())
-                dem_x = st.selectbox("Escolha a demanda (X)", demandas_disp, index=0, key="demanda_uf_x")
+                if not demandas_disp:
+                    st.info("Sem demandas válidas para comparar.")
+                else:
+                    dem_x = st.selectbox(
+                        "Escolha a demanda (X)",
+                        demandas_disp,
+                        index=0,
+                        key="dem_uf_x"
+                    )
 
-                base["GRUPO"] = "RESTANTE"
-                base.loc[base["DEMANDA"] == dem_x, "GRUPO"] = f"X: {dem_x}"
+                    base["GRUPO"] = "OUTRAS DEMANDAS"
+                    base.loc[base["DEMANDA"] == dem_x, "GRUPO"] = f"X: {dem_x}"
 
-                classes = ["PROCEDENTE", "IMPROCEDENTE"]
-                grupos = [f"X: {dem_x}", "RESTANTE"]
+                    grupos = [f"X: {dem_x}", "OUTRAS DEMANDAS"]
+                    classes = ["PROCEDENTE", "IMPROCEDENTE"]
 
-                tab = (
-                    base.groupby([COL_ESTADO, "GRUPO", "_CLASSE_"])
-                    .size()
-                    .reset_index(name="QTD")
-                )
+                    tab = (
+                        base.groupby(["UF", "GRUPO", "_CLASSE_"])
+                        .size()
+                        .reset_index(name="QTD")
+                    )
 
-                # garante grid UF x grupo x classe
-                ufs = sorted(base[COL_ESTADO].dropna().unique().tolist())
-                grid = (
-                    pd.DataFrame({COL_ESTADO: ufs}).assign(_k=1)
-                    .merge(pd.DataFrame({"GRUPO": grupos}).assign(_k=1), on="_k")
-                    .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
-                    .drop(columns="_k")
-                )
-                tab = grid.merge(tab, on=[COL_ESTADO, "GRUPO", "_CLASSE_"], how="left").fillna({"QTD": 0})
-                tab["QTD"] = tab["QTD"].astype(int)
-                tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+                    # garante grid completo (UF x GRUPO x CLASSE)
+                    ufs = sorted(base["UF"].dropna().unique().tolist())
+                    grid = (
+                        pd.DataFrame({"UF": ufs}).assign(_k=1)
+                        .merge(pd.DataFrame({"GRUPO": grupos}).assign(_k=1), on="_k")
+                        .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
+                        .drop(columns="_k")
+                    )
+                    tab = (
+                        grid.merge(tab, on=["UF", "GRUPO", "_CLASSE_"], how="left")
+                        .fillna({"QTD": 0})
+                    )
+                    tab["QTD"] = tab["QTD"].astype(int)
+                    tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
 
-                fig = px.bar(
-                    tab,
-                    x=COL_ESTADO,
-                    y="QTD",
-                    color="_CLASSE_",
-                    barmode="stack",
-                    facet_col="GRUPO",
-                    template="plotly_dark",
-                    color_discrete_map={"PROCEDENTE": COR_PROC, "IMPROCEDENTE": COR_IMP},
-                )
+                    # total por UF e por grupo (para % em cima)
+                    tot_uf_grupo = tab.groupby(["UF", "GRUPO"])["QTD"].sum().reset_index(name="TOTAL_GRUPO")
+                    tot_uf = tot_uf_grupo.groupby("UF")["TOTAL_GRUPO"].sum().reset_index(name="TOTAL_UF")
+                    tot_uf_grupo = tot_uf_grupo.merge(tot_uf, on="UF", how="left")
+                    tot_uf_grupo["PCT_NO_UF"] = (tot_uf_grupo["TOTAL_GRUPO"] / tot_uf_grupo["TOTAL_UF"].replace(0, 1) * 100).round(1)
 
-                fig.update_traces(
-                    text=tab["TXT_QTD"],
-                    textposition="inside",
-                    insidetextanchor="middle",
-                    cliponaxis=False
-                )
+                    fig = px.bar(
+                        tab,
+                        x="UF",
+                        y="QTD",
+                        color="_CLASSE_",
+                        barmode="stack",
+                        facet_col="GRUPO",
+                        template="plotly_dark",
+                        category_orders={"GRUPO": grupos, "_CLASSE_": classes},
+                        color_discrete_map={
+                            "PROCEDENTE": COR_PROC,
+                            "IMPROCEDENTE": COR_IMP,
+                        }
+                    )
 
-                fig = _style_clean(fig)
-                fig = _legend_bottom(fig, y=-0.25)
-                fig.update_layout(margin=dict(l=10, r=230, t=60, b=90))
+                    # QTD dentro
+                    fig.update_traces(
+                        text=tab["TXT_QTD"],
+                        textposition="inside",
+                        insidetextanchor="middle",
+                        cliponaxis=False
+                    )
 
-                # % acima: participação da UF no total (somando grupos e classes)
-                tot_uf = tab.groupby(COL_ESTADO)["QTD"].sum().reset_index(name="TOTAL_UF")
-                total_geral = int(tot_uf["TOTAL_UF"].sum()) or 1
-                tot_uf["PCT_UF"] = (tot_uf["TOTAL_UF"] / total_geral * 100).round(1)
+                    # limpa eixos e grades
+                    fig.for_each_xaxis(lambda a: a.update(showgrid=False, ticks="", showticklabels=True))
+                    fig.for_each_yaxis(lambda a: a.update(visible=False, showticklabels=False, showgrid=False, zeroline=False))
 
-                y_max = int(tot_uf["TOTAL_UF"].max()) if int(tot_uf["TOTAL_UF"].max()) > 0 else 1
-                pad = y_max * 0.10
-                fig.add_scatter(
-                    x=tot_uf[COL_ESTADO],
-                    y=tot_uf["TOTAL_UF"].astype(float) + pad,
-                    mode="text",
-                    text=[f"{p:.1f}%" for p in tot_uf["PCT_UF"]],
-                    showlegend=False,
-                    textfont=dict(size=11, family="Arial Black", color="white"),
-                    hoverinfo="skip",
-                )
+                    # % em cima (por UF) — em cada facet (X e Outras)
+                    # Calcula um "pad" com base no maior total do UF
+                    y_max = int(tot_uf_grupo["TOTAL_GRUPO"].max()) if int(tot_uf_grupo["TOTAL_GRUPO"].max()) > 0 else 1
+                    pad = y_max * 0.10
 
-                # quadro total (recorte inteiro)
-                BOX_X = 1.18  # -> direita/esquerda
-                BOX_Y = 0.98  # -> cima/baixo
-                proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
-                improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
-                total_all = proc_total + improc_total
-                fig = _add_summary_box(fig, proc_total, improc_total, total_all, box_x=BOX_X, box_y=BOX_Y)
+                    for g in grupos:
+                        rec = tot_uf_grupo[tot_uf_grupo["GRUPO"] == g].copy()
+                        fig.add_scatter(
+                            x=rec["UF"],
+                            y=rec["TOTAL_GRUPO"].astype(float) + pad,
+                            mode="text",
+                            text=[f"{p:.1f}%" for p in rec["PCT_NO_UF"]],
+                            textposition="middle center",
+                            showlegend=False,
+                            hoverinfo="skip",
+                            textfont=dict(size=12, family="Arial Black", color="white"),
+                            xaxis="x" if g == grupos[0] else "x2",
+                            yaxis="y" if g == grupos[0] else "y2",
+                        )
 
-                st.plotly_chart(fig, use_container_width=True)
+                    # legenda embaixo
+                    fig.update_layout(
+                        legend=dict(
+                            orientation="h",
+                            yanchor="top",
+                            y=-0.22,
+                            xanchor="left",
+                            x=0.0,
+                            title_text=""
+                        ),
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        margin=dict(l=10, r=240, t=60, b=95),
+                    )
 
-st.markdown("</div>", unsafe_allow_html=True)
+                    # quadro totais (direita)
+                    # === AJUSTE FINO DO QUADRO ===
+                    BOX_X = 1.18  # maior -> mais DIREITA | menor -> mais ESQUERDA
+                    BOX_Y = 0.98  # maior -> mais CIMA    | menor -> mais BAIXO
+
+                    proc_total   = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
+                    improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
+                    total_all    = proc_total + improc_total
+
+                    def _fmt(v): return f"{int(v):,}".replace(",", ".")
+
+                    fig.add_annotation(
+                        xref="paper", yref="paper",
+                        x=BOX_X, y=BOX_Y,
+                        xanchor="right", yanchor="top",
+                        showarrow=False, align="left",
+                        bgcolor="rgba(0,0,0,0.45)",
+                        bordercolor="rgba(255,255,255,0.25)",
+                        borderwidth=1,
+                        borderpad=10,
+                        text=(
+                            f"<span style='color:{COR_PROC};font-size:13px'><b>■ PROCEDENTE</b></span><br>"
+                            f"<span style='color:white;font-size:18px'><b>{_fmt(proc_total)}</b></span><br><br>"
+                            f"<span style='color:{COR_IMP};font-size:13px'><b>■ IMPROCEDENTE</b></span><br>"
+                            f"<span style='color:white;font-size:18px'><b>{_fmt(improc_total)}</b></span><br><br>"
+                            f"<span style='color:#fcba03;font-size:13px'><b>TOTAL</b></span><br>"
+                            f"<span style='color:#fcba03;font-size:20px'><b>{_fmt(total_all)}</b></span>"
+                        )
+                    )
+
+                    # Ajusta títulos dos facets (GRUPO=...)
+                    # Se estiver encostando, mexa no SHIFT
+                    FACET_Y_SHIFT = 0.04  # ↑ sobe | ↓ desce
+                    for ann in fig.layout.annotations:
+                        if ann.text and "=" in ann.text:
+                            ann.text = ann.text.split("=", 1)[1].strip()
+                            ann.y = min(1.0, (ann.y or 0) + FACET_Y_SHIFT)
+                            ann.yanchor = "bottom"
+                            ann.xanchor = "center"
+                            ann.font = dict(size=13, color="white", family="Arial Black")
+
+                    st.plotly_chart(fig, use_container_width=True)
 
 
 
