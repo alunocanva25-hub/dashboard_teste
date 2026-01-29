@@ -1180,7 +1180,7 @@ if st.session_state.show_relatorios:
                 )
 
                 # === POSIÇÃO DO QUADRO (REGIONAL) ===
-                BOX_X_REG = 1.18  # (->) maior = mais DIREITA | menor = mais ESQUERDA
+                BOX_X_REG = 1.12  # (->) maior = mais DIREITA | menor = mais ESQUERDA
                 BOX_Y_REG = 0.98  # (^) maior = mais CIMA    | menor = mais BAIXO
 
                 if modo == "Uma regional (detalhe por resultado)":
@@ -1393,7 +1393,7 @@ if st.session_state.show_relatorios:
                 fig.update_layout(margin=dict(l=10, r=180, t=30, b=80))
 
                 # === POSIÇÃO DO QUADRO (UF) ===
-                BOX_X_UF = 1.18  # (->) maior = mais DIREITA | menor = mais ESQUERDA
+                BOX_X_UF = 1.12  # (->) maior = mais DIREITA | menor = mais ESQUERDA
                 BOX_Y_UF = 0.98  # (^) maior = mais CIMA    | menor = mais BAIXO
 
                 # quadro (soma do recorte Top N)
@@ -1514,7 +1514,7 @@ if st.session_state.show_relatorios:
                     fig.update_layout(margin=dict(l=10, r=220, t=30, b=80))
 
                     # === POSIÇÃO DO QUADRO (ANUAL) ===
-                    BOX_X_ANO = 1.22  # (->) maior = mais DIREITA | menor = mais ESQUERDA
+                    BOX_X_ANO = 1.12  # (->) maior = mais DIREITA | menor = mais ESQUERDA
                     BOX_Y_ANO = 0.98  # (^) maior = mais CIMA    | menor = mais BAIXO
 
                     proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
@@ -1686,7 +1686,7 @@ with tab_dist_mes:
                     # - centraliza
                     # - posiciona corretamente (sem invadir meses)
                     # ==================================================
-                    FACET_TITLE_Y = 0.86   # ↓ diminua para descer | ↑ aumente para subir
+                    FACET_TITLE_Y = 0.40   # ↓ diminua para descer | ↑ aumente para subir
                     FACET_TITLE_X = 0.50   # centro horizontal
                     FACET_FONT_SIZE = 13
 
