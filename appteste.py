@@ -2156,7 +2156,7 @@ with tab_demanda_uf:
                     # quadro totais (direita)
                     # === AJUSTE FINO DO QUADRO ===
                     BOX_X = 1.18  # maior -> mais DIREITA | menor -> mais ESQUERDA
-                    BOX_Y = 0.98  # maior -> mais CIMA    | menor -> mais BAIXO
+                    BOX_Y = 0.79  # maior -> mais CIMA    | menor -> mais BAIXO
 
                     proc_total   = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
                     improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
