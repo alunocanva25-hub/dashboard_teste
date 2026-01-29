@@ -1023,12 +1023,24 @@ st.download_button(
 )
 
 # ==================================================
-# 📊 RELATÓRIOS GERENCIAIS (CARD PRINCIPAL)
+# CARD — RELATÓRIOS GERENCIAIS
 # ==================================================
 
-with st.expander("📊 RELATÓRIOS GERENCIAIS", expanded=True):
+st.markdown('<div class="card"><div class="card-title">RELATÓRIOS GERENCIAIS</div>', unsafe_allow_html=True)
 
-    tab_regional, tab_uf, tab_ano, tab_dist_mes, tab_demanda_geral, tab_demanda_uf = st.tabs([
+if "show_relatorios" not in st.session_state:
+    st.session_state.show_relatorios = False
+
+c1, c2 = st.columns([1.2, 4.8])
+with c1:
+    if st.button("📑 Abrir / Fechar Relatórios"):
+        st.session_state.show_relatorios = not st.session_state.show_relatorios
+with c2:
+    st.caption("Relatórios respeitam período selecionado. Comparativo Anual usa base completa.")
+
+if st.session_state.show_relatorios:
+
+    tab_reg, tab_uf, tab_ano, tab_dist_mes, tab_demanda, tab_demanda_uf = st.tabs([
         "📍 Regional",
         "🗺️ Estado (UF)",
         "📅 Comparativo Anual",
@@ -1038,204 +1050,181 @@ with st.expander("📊 RELATÓRIOS GERENCIAIS", expanded=True):
     ])
 
     # ==================================================
-    # 📅 COMPARATIVO ANUAL — PROCEDENTE x IMPROCEDENTE
+    # TAB 1 — REGIONAL
+    # ==================================================
+    with tab_reg:
+        st.subheader("Relatório por Regional")
+
+        base = df_periodo.dropna(subset=[COL_REGIONAL]).copy()
+        if base.empty:
+            st.info("Sem dados no período.")
+        else:
+            base = _classificar(base)
+            base[COL_REGIONAL] = base[COL_REGIONAL].astype(str).str.upper().str.strip()
+
+            tab = (
+                base.groupby([COL_REGIONAL, "_CLASSE_"])
+                .size()
+                .unstack(fill_value=0)
+                .reset_index()
+            )
+
+            for c in ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]:
+                if c not in tab.columns:
+                    tab[c] = 0
+
+            tab["TOTAL"] = tab["PROCEDENTE"] + tab["IMPROCEDENTE"] + tab["OUTROS"]
+            tab = tab.sort_values("TOTAL", ascending=False)
+
+            st.dataframe(tab, hide_index=True, use_container_width=True)
+
+    # ==================================================
+    # TAB 2 — UF
+    # ==================================================
+    with tab_uf:
+        st.subheader("Relatório por Estado (UF)")
+
+        base = df_periodo.dropna(subset=[COL_ESTADO]).copy()
+        if base.empty:
+            st.info("Sem dados no período.")
+        else:
+            base = _classificar(base)
+            base[COL_ESTADO] = base[COL_ESTADO].astype(str).str.upper().str.strip()
+
+            tab = (
+                base.groupby([COL_ESTADO, "_CLASSE_"])
+                .size()
+                .unstack(fill_value=0)
+                .reset_index()
+            )
+
+            for c in ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]:
+                if c not in tab.columns:
+                    tab[c] = 0
+
+            tab["TOTAL"] = tab["PROCEDENTE"] + tab["IMPROCEDENTE"] + tab["OUTROS"]
+            tab = tab.sort_values("TOTAL", ascending=False)
+
+            st.dataframe(tab, hide_index=True, use_container_width=True)
+
+    # ==================================================
+    # TAB 3 — COMPARATIVO ANUAL (FUNCIONAL)
     # ==================================================
     with tab_ano:
-
-        st.subheader("📅 Comparativo Anual — Procedente x Improcedente")
+        st.subheader("Comparativo Anual — Procedente x Improcedente x Outros")
 
         base = df.copy()
         base[COL_DATA] = pd.to_datetime(base[COL_DATA], errors="coerce", dayfirst=True)
         base = base.dropna(subset=[COL_DATA]).copy()
 
         if base.empty:
-            st.info("Sem dados válidos.")
-            st.stop()
+            st.info("Sem datas válidas.")
+        else:
+            base = _classificar(base)
+            base["ANO"] = base[COL_DATA].dt.year.astype(int)
 
-        # classificação direta (sem depender de função externa)
-        res = base[COL_RESULTADO].astype(str).str.upper()
-        base["_CLASSE_"] = np.where(
-            res.str.contains("IMPROCED"),
-            "IMPROCEDENTE",
-            np.where(res.str.contains("PROCEDENTE"), "PROCEDENTE", None)
-        )
-        base = base.dropna(subset=["_CLASSE_"]).copy()
-
-        base["ANO"] = base[COL_DATA].dt.year.astype(int)
-
-        tab = (
-            base.groupby(["ANO", "_CLASSE_"])
-            .size()
-            .reset_index(name="QTD")
-        )
-
-        classes = ["PROCEDENTE", "IMPROCEDENTE"]
-        anos = sorted(tab["ANO"].unique())
-
-        grid = (
-            pd.DataFrame({"ANO": anos}).assign(_k=1)
-            .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
-            .drop(columns="_k")
-        )
-
-        tab = grid.merge(tab, on=["ANO", "_CLASSE_"], how="left").fillna({"QTD": 0})
-        tab["QTD"] = tab["QTD"].astype(int)
-
-        total_ano = tab.groupby("ANO")["QTD"].transform("sum").replace(0, 1)
-        tab["PCT"] = (tab["QTD"] / total_ano * 100).round(1)
-
-        # ---------------------------
-        # GRÁFICO
-        # ---------------------------
-        fig = px.bar(
-            tab,
-            x="ANO",
-            y="QTD",
-            color="_CLASSE_",
-            barmode="group",
-            template="plotly_dark",
-            color_discrete_map={
-                "PROCEDENTE": COR_PROC,
-                "IMPROCEDENTE": COR_IMP,
-            },
-        )
-
-        # QTD dentro da barra
-        fig.update_traces(
-            texttemplate="%{y}",
-            textposition="inside",
-            insidetextanchor="middle"
-        )
-
-        # ---------------------------
-        # % ACIMA (ALINHADA POR BLOCO)
-        # ---------------------------
-        max_y = tab["QTD"].max()
-        OFFSET_Y = max(1, int(max_y * 0.05))
-
-        BAR_SHIFT = {
-            "PROCEDENTE": -0.18,
-            "IMPROCEDENTE": 0.18
-        }
-
-        for _, r in tab.iterrows():
-            fig.add_annotation(
-                x=r["ANO"] + BAR_SHIFT[r["_CLASSE_"]],
-                y=r["QTD"] + OFFSET_Y,
-                text=f"{r['PCT']:.1f}%",
-                showarrow=False,
-                font=dict(size=12, color="white", family="Arial Black"),
-                xanchor="center",
-                yanchor="bottom",
+            tab = (
+                base.groupby(["ANO", "_CLASSE_"])
+                .size()
+                .reset_index(name="QTD")
             )
 
-        fig.update_xaxes(showgrid=False)
-        fig.update_yaxes(showgrid=False, visible=False)
+            classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
+            anos = sorted(tab["ANO"].unique())
 
-        fig.update_layout(
-            legend=dict(orientation="h", y=-0.22, x=0),
-            margin=dict(l=10, r=230, t=40, b=90),
-        )
-
-        # ---------------------------
-        # QUADRO DE TOTAIS (DIREITA)
-        # ---------------------------
-        proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
-        improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
-        total_geral = proc_total + improc_total
-
-        # >>> AJUSTE FINO DO QUADRO <<<
-        BOX_X = 1.12  # → direita / esquerda
-        BOX_Y = 0.98  # ↑ cima / baixo
-
-        fig.add_annotation(
-            xref="paper", yref="paper",
-            x=BOX_X, y=BOX_Y,
-            showarrow=False,
-            align="left",
-            bgcolor="rgba(0,0,0,0.45)",
-            bordercolor="rgba(255,255,255,0.25)",
-            borderwidth=1,
-            borderpad=10,
-            text=(
-                f"<span style='color:{COR_PROC};font-size:13px'><b>■ PROCEDENTE</b></span><br>"
-                f"<span style='color:white;font-size:18px'><b>{proc_total:,}</b></span><br><br>"
-                f"<span style='color:{COR_IMP};font-size:13px'><b>■ IMPROCEDENTE</b></span><br>"
-                f"<span style='color:white;font-size:18px'><b>{improc_total:,}</b></span><br><br>"
-                f"<span style='color:#f7c843;font-size:13px'><b>TOTAL</b></span><br>"
-                f"<span style='color:#f7c843;font-size:20px'><b>{total_geral:,}</b></span>"
+            grid = (
+                pd.DataFrame({"ANO": anos}).assign(_k=1)
+                .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
+                .drop(columns="_k")
             )
-        )
 
-        st.plotly_chart(fig, use_container_width=True)
+            tab = grid.merge(tab, on=["ANO", "_CLASSE_"], how="left").fillna({"QTD": 0})
+            tab["QTD"] = tab["QTD"].astype(int)
+
+            total_ano = tab.groupby("ANO")["QTD"].transform("sum").replace(0, 1)
+            tab["PCT"] = (tab["QTD"] / total_ano * 100).round(1)
+
+            st.dataframe(tab, hide_index=True, use_container_width=True)
 
     # ==================================================
-    # 🧾 DEMANDA x DEMANDAS (UF) — COM SELETOR
+    # TAB 4 — DISTRIBUIDORA POR MÊS
+    # ==================================================
+    with tab_dist_mes:
+        st.subheader("Distribuidora por Mês")
+
+        base = df_periodo.copy()
+        base[COL_DATA] = pd.to_datetime(base[COL_DATA], errors="coerce", dayfirst=True)
+        base = base.dropna(subset=[COL_DATA, COL_ESTADO]).copy()
+
+        if base.empty:
+            st.info("Sem dados válidos.")
+        else:
+            base = _classificar(base)
+            base["MES"] = base[COL_DATA].dt.month
+            base["ANO"] = base[COL_DATA].dt.year
+            base[COL_ESTADO] = base[COL_ESTADO].astype(str).str.upper().str.strip()
+
+            tab = (
+                base.groupby(["ANO", "MES", COL_ESTADO, "_CLASSE_"])
+                .size()
+                .reset_index(name="QTD")
+            )
+
+            st.dataframe(tab, hide_index=True, use_container_width=True)
+
+    # ==================================================
+    # TAB 5 — DEMANDA x DEMANDAS (GERAL)
+    # ==================================================
+    with tab_demanda:
+        st.subheader("Demanda x Demandas (Geral)")
+
+        base = df_periodo.dropna(subset=[COL_DEMANDA]).copy()
+        if base.empty:
+            st.info("Sem dados no período.")
+        else:
+            base = _classificar(base)
+            base["DEMANDA"] = base[COL_DEMANDA].astype(str).str.upper().str.strip()
+
+            tab = (
+                base.groupby(["DEMANDA", "_CLASSE_"])
+                .size()
+                .unstack(fill_value=0)
+                .reset_index()
+            )
+
+            st.dataframe(tab, hide_index=True, use_container_width=True)
+
+    # ==================================================
+    # TAB 6 — DEMANDA x DEMANDAS (UF) (NOVO)
     # ==================================================
     with tab_demanda_uf:
+        st.subheader("Demanda x Demandas (UF)")
 
-        st.subheader("🧾 Demanda x Demandas (UF)")
+        base = df_periodo.dropna(subset=[COL_DEMANDA, COL_ESTADO]).copy()
+        if base.empty:
+            st.info("Sem dados no período.")
+        else:
+            base = _classificar(base)
+            base["DEMANDA"] = base[COL_DEMANDA].astype(str).str.upper().str.strip()
+            base[COL_ESTADO] = base[COL_ESTADO].astype(str).str.upper().str.strip()
 
-        demandas_disp = ["TOTAL"] + sorted(df[COL_DEMANDA].dropna().unique().tolist())
-        demanda_sel = st.selectbox(
-            "Selecione a Demanda",
-            demandas_disp,
-            key="demanda_uf_sel"
-        )
-
-        base = df.copy()
-
-        if demanda_sel != "TOTAL":
-            base = base[base[COL_DEMANDA] == demanda_sel].copy()
-
-        base[COL_RESULTADO] = base[COL_RESULTADO].astype(str).str.upper()
-        base = base[base[COL_RESULTADO].isin(["PROCEDENTE", "IMPROCEDENTE"])]
-
-        tab = (
-            base.groupby([COL_ESTADO, COL_RESULTADO])
-            .size()
-            .reset_index(name="QTD")
-        )
-
-        total_uf = tab.groupby(COL_ESTADO)["QTD"].transform("sum").replace(0, 1)
-        tab["PCT"] = (tab["QTD"] / total_uf * 100).round(1)
-
-        fig = px.bar(
-            tab,
-            x=COL_ESTADO,
-            y="QTD",
-            color=COL_RESULTADO,
-            barmode="group",
-            template="plotly_dark",
-            color_discrete_map={
-                "PROCEDENTE": COR_PROC,
-                "IMPROCEDENTE": COR_IMP,
-            }
-        )
-
-        fig.update_traces(
-            texttemplate="%{y}",
-            textposition="inside"
-        )
-
-        max_y = tab["QTD"].max()
-        offset = max(1, int(max_y * 0.05))
-
-        for _, r in tab.iterrows():
-            fig.add_annotation(
-                x=r[COL_ESTADO],
-                y=r["QTD"] + offset,
-                text=f"{r['PCT']:.1f}%",
-                showarrow=False,
-                font=dict(size=11, color="white", family="Arial Black"),
-                xanchor="center"
+            dem_sel = st.selectbox(
+                "Escolha a Demanda",
+                sorted(base["DEMANDA"].unique()),
+                key="demanda_uf_sel"
             )
 
-        fig.update_xaxes(showgrid=False)
-        fig.update_yaxes(showgrid=False, visible=False)
-        fig.update_layout(legend=dict(orientation="h", y=-0.22))
+            base["GRUPO"] = "RESTANTE"
+            base.loc[base["DEMANDA"] == dem_sel, "GRUPO"] = f"X: {dem_sel}"
 
-        st.plotly_chart(fig, use_container_width=True)
+            tab = (
+                base.groupby([COL_ESTADO, "GRUPO", "_CLASSE_"])
+                .size()
+                .reset_index(name="QTD")
+            )
+
+            st.dataframe(tab, hide_index=True, use_container_width=True)
+
 
 
 
