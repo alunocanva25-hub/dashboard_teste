@@ -1737,6 +1737,223 @@ with tab_demanda:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
+# ==================================================
+# 🧾 DEMANDA x DEMANDAS (UF) — "DEMANDA SOLICITADA"
+# Padrão do seu dashboard:
+# - Barras agrupadas por UF (NOTIFICADOS vs OUTRAS DEMANDAS) + TOTAL
+# - QTD dentro das barras
+# - % acima (alinhada por barra)
+# - legenda embaixo
+# - sem grid e sem eixo esquerdo
+# - quadro de totais à direita (comentado p/ mover)
+# ==================================================
+
+with tab_demanda_uf:
+    st.subheader("📌 Demanda x Demandas (UF) — DEMANDA SOLICITADA")
+
+    # =========================
+    # Helpers locais (não dependem do resto)
+    # =========================
+    def _col_ok_local(c):
+        try:
+            return c is not None and str(c).strip() != "" and c in df.columns
+        except Exception:
+            return False
+
+    def _norm_txt(s):
+        return s.astype(str).str.upper().str.strip()
+
+    def _fmt_int(n: int) -> str:
+        return f"{int(n):,}".replace(",", ".")
+
+    # =========================
+    # Colunas necessárias
+    # =========================
+    if not _col_ok_local(COL_ESTADO):
+        st.warning("Coluna de UF/ESTADO não encontrada (COL_ESTADO).")
+        st.stop()
+
+    # Coluna de demanda solicitada (você disse: "DEMANDA SOLICITADA")
+    COL_DEMANDA = None
+    for c in df.columns:
+        if str(c).strip().upper() == "DEMANDA SOLICITADA":
+            COL_DEMANDA = c
+            break
+
+    if COL_DEMANDA is None:
+        st.warning('Coluna "DEMANDA SOLICITADA" não encontrada.')
+        st.stop()
+
+    base = df.copy()
+    base[COL_ESTADO] = _norm_txt(base[COL_ESTADO]).replace({"": None})
+    base = base.dropna(subset=[COL_ESTADO]).copy()
+
+    # =========================
+    # Filtro UF (opcional)
+    # =========================
+    ufs_disp = ["TOTAL"] + sorted(base[COL_ESTADO].dropna().unique().tolist())
+    uf_filtro = st.selectbox("Filtrar UF (opcional)", options=ufs_disp, index=0, key="dem_uf_filtro")
+    if uf_filtro != "TOTAL":
+        base = base[base[COL_ESTADO] == uf_filtro].copy()
+
+    # =========================
+    # Define classes:
+    # - NOTIFICADOS = demanda solicitada (coluna DEMANDA SOLICITADA preenchida)
+    # - OUTRAS DEMANDAS = resto (vazio/nulo)
+    # Obs: se você tiver um critério melhor (ex: valor específico),
+    #      eu adapto, mas assim já funciona na maioria das bases.
+    # =========================
+    dem = base[COL_DEMANDA]
+    mask_notif = dem.notna() & (dem.astype(str).str.strip() != "")
+
+    base["_CLASSE_"] = "OUTRAS DEMANDAS"
+    base.loc[mask_notif, "_CLASSE_"] = "NOTIFICADOS"
+
+    # =========================
+    # Agrega por UF x CLASSE
+    # =========================
+    tab = (
+        base.groupby([COL_ESTADO, "_CLASSE_"])
+        .size()
+        .reset_index(name="QTD")
+    )
+
+    if tab.empty:
+        st.info("Sem dados para este relatório.")
+        st.stop()
+
+    classes = ["NOTIFICADOS", "OUTRAS DEMANDAS"]
+    ufs = sorted(tab[COL_ESTADO].unique().tolist())
+
+    # garante grid completo (2 classes por UF)
+    grid = (
+        pd.DataFrame({COL_ESTADO: ufs}).assign(_k=1)
+        .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
+        .drop(columns="_k")
+    )
+    tab = grid.merge(tab, on=[COL_ESTADO, "_CLASSE_"], how="left").fillna({"QTD": 0})
+    tab["QTD"] = tab["QTD"].astype(int)
+
+    # TOTAL por UF
+    tot_uf = tab.groupby(COL_ESTADO)["QTD"].sum().reset_index(name="TOTAL_UF")
+    tab = tab.merge(tot_uf, on=COL_ESTADO, how="left")
+
+    # % por UF (cada barra em relação ao total daquela UF)
+    denom = tab["TOTAL_UF"].replace(0, 1)
+    tab["PCT"] = (tab["QTD"] / denom * 100).round(1)
+
+    # =========================
+    # Gráfico (Padrão)
+    # =========================
+    fig_uf = px.bar(
+        tab,
+        x=COL_ESTADO,
+        y="QTD",
+        color="_CLASSE_",
+        barmode="group",
+        template="plotly_dark",
+        category_orders={"_CLASSE_": classes, COL_ESTADO: ufs},
+        color_discrete_map={
+            "NOTIFICADOS": COR_PROC,        # verde (padrão)
+            "OUTRAS DEMANDAS": COR_IMP,     # vermelho (padrão)
+        },
+    )
+
+    # QTD dentro
+    fig_uf.update_traces(
+        texttemplate="%{y}",
+        textposition="inside",
+        insidetextanchor="middle",
+        cliponaxis=False,
+    )
+
+    # -------------------------
+    # % acima (alinhada por barra)
+    # -------------------------
+    max_y = int(tab["QTD"].max()) if not tab.empty else 0
+    OFFSET_Y = max(1, int(max_y * 0.06))  # ↑ maior = mais acima
+
+    # shift para barras agrupadas
+    SHIFT_A = -18  # NOTIFICADOS (←)
+    SHIFT_B = +18  # OUTRAS DEMANDAS (→)
+
+    for _, r in tab.iterrows():
+        if int(r["QTD"]) == 0:
+            continue
+        xshift = SHIFT_A if r["_CLASSE_"] == "NOTIFICADOS" else SHIFT_B
+        fig_uf.add_annotation(
+            x=r[COL_ESTADO],
+            y=int(r["QTD"]) + OFFSET_Y,
+            text=f'{float(r["PCT"]):.1f}%',
+            showarrow=False,
+            font=dict(size=12, color="white", family="Arial Black"),
+            xanchor="center",
+            yanchor="bottom",
+            xshift=xshift,
+        )
+
+    # sem grid e sem eixo esquerdo
+    fig_uf.update_xaxes(showgrid=False, ticks="")
+    fig_uf.update_yaxes(showgrid=False, visible=False, ticks="", zeroline=False)
+
+    # legenda embaixo
+    LEGEND_Y = -0.22  # (↓) menor = mais baixo | maior = mais alto
+    fig_uf.update_layout(
+        legend=dict(orientation="h", y=LEGEND_Y, x=0, title_text=""),
+        margin=dict(l=10, r=260, t=30, b=90),
+        xaxis_title="",
+        yaxis_title="",
+    )
+
+    # =========================
+    # Quadro de totais à direita
+    # =========================
+    notif_total = int(tab.loc[tab["_CLASSE_"] == "NOTIFICADOS", "QTD"].sum())
+    outras_total = int(tab.loc[tab["_CLASSE_"] == "OUTRAS DEMANDAS", "QTD"].sum())
+    total_geral = notif_total + outras_total
+
+    # >>> AJUSTE POSIÇÃO DO QUADRO <<<
+    BOX_X = 1.14  # (->) maior = mais DIREITA | menor = mais ESQUERDA
+    BOX_Y = 0.98  # (^) maior = mais CIMA    | menor = mais BAIXO
+
+    fig_uf.add_annotation(
+        xref="paper", yref="paper",
+        x=BOX_X, y=BOX_Y,
+        showarrow=False, align="left",
+        bgcolor="rgba(0,0,0,0.45)",
+        bordercolor="rgba(255,255,255,0.25)",
+        borderwidth=1,
+        borderpad=10,
+        text=(
+            f"<span style='color:{COR_PROC};font-size:13px'><b>■ NOTIFICADOS</b></span><br>"
+            f"<span style='color:white;font-size:18px'><b>{_fmt_int(notif_total)}</b></span><br><br>"
+            f"<span style='color:{COR_IMP};font-size:13px'><b>■ OUTRAS DEMANDAS</b></span><br>"
+            f"<span style='color:white;font-size:18px'><b>{_fmt_int(outras_total)}</b></span><br><br>"
+            f"<span style='color:#fcba03;font-size:13px'><b>TOTAL</b></span><br>"
+            f"<span style='color:#fcba03;font-size:20px'><b>{_fmt_int(total_geral)}</b></span>"
+        )
+    )
+
+    st.plotly_chart(fig_uf, use_container_width=True)
+
+    # =========================
+    # Tabela (tipo a da imagem)
+    # =========================
+    piv = (
+        tab.pivot_table(index=COL_ESTADO, columns="_CLASSE_", values="QTD", aggfunc="sum", fill_value=0)
+        .reset_index()
+    )
+    if "NOTIFICADOS" not in piv.columns:
+        piv["NOTIFICADOS"] = 0
+    if "OUTRAS DEMANDAS" not in piv.columns:
+        piv["OUTRAS DEMANDAS"] = 0
+
+    piv["TOTAL"] = piv["NOTIFICADOS"] + piv["OUTRAS DEMANDAS"]
+    den2 = piv["TOTAL"].replace(0, 1)
+    piv["%NOTIFICADOS"] = (piv["NOTIFICADOS"] / den2 * 100).round(1)
+    piv["%OUTRAS"] = (piv["OUTRAS DEMANDAS"] / den2 * 100).round(1)
+
+    st.dataframe(piv, hide_index=True, use_container_width=True)
 
 
 
