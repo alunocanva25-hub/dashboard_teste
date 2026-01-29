@@ -1544,13 +1544,13 @@ if st.session_state.show_relatorios:
 
 # ==================================================
 # TAB — DISTRIBUIDORA POR MÊS
-# ✅ ATUALIZAÇÕES:
-# 1) Facet title: remove "LOCALIDADE=" e deixa só o estado
-# 2) Abaixa o título pra não ficar entre os meses
-# 3) Meses (jan..dez) aparecem em TODOS os facets
+# - Meses abreviados (jan..dez) em TODOS os facets
+# - Sem eixo Y e sem grades
+# - Legenda embaixo (padrão)
+# - TÍTULOS DOS ESTADOS AJUSTADOS (posição limpa e padronizada)
 # ==================================================
 with tab_dist_mes:
-    st.subheader("Distribuidora por Mês (meses abreviados)")
+    st.subheader("Distribuidora por Mês")
 
     if COL_DATA is None or COL_ESTADO is None:
         st.warning("Preciso das colunas DATA e ESTADO/UF.")
@@ -1562,9 +1562,9 @@ with tab_dist_mes:
         if base.empty:
             st.info("Sem dados com DATA válida no período.")
         else:
-            # cria _CLASSE_ pelo _RES_
+            # Classificação (usa _RES_ já criado no script principal)
             if "_RES_" not in base.columns:
-                st.warning("Coluna interna '_RES_' não encontrada (ela é gerada no script principal).")
+                st.warning("Coluna interna '_RES_' não encontrada.")
             else:
                 res = base["_RES_"].astype(str).str.upper().str.strip()
                 base["_CLASSE_"] = "OUTROS"
@@ -1573,6 +1573,7 @@ with tab_dist_mes:
 
                 base[COL_ESTADO] = base[COL_ESTADO].astype(str).str.upper().str.strip()
 
+                # Meses abreviados
                 MESES_ABREV = {1:"jan",2:"fev",3:"mar",4:"abr",5:"mai",6:"jun",7:"jul",8:"ago",9:"set",10:"out",11:"nov",12:"dez"}
                 MESES_ORDEM = [MESES_ABREV[i] for i in range(1, 13)]
 
@@ -1606,7 +1607,7 @@ with tab_dist_mes:
                 else:
                     classes = ["PROCEDENTE", "IMPROCEDENTE", "OUTROS"]
 
-                    # garante 12 meses + classes por estado
+                    # Garante 12 meses + classes por estado
                     meses_df = pd.DataFrame({"MES_NUM": list(range(1, 13))})
                     meses_df["MÊS"] = meses_df["MES_NUM"].map(MESES_ABREV)
 
@@ -1641,6 +1642,7 @@ with tab_dist_mes:
                         }
                     )
 
+                    # QTD dentro
                     fig.update_traces(
                         text=tab["TXT_QTD"],
                         textposition="inside",
@@ -1648,7 +1650,7 @@ with tab_dist_mes:
                         cliponaxis=False
                     )
 
-                    # meses visíveis em todos os facets + sem grade
+                    # Meses visíveis em TODOS os facets + sem grades
                     fig.for_each_xaxis(lambda a: a.update(
                         showgrid=False,
                         ticks="",
@@ -1665,7 +1667,7 @@ with tab_dist_mes:
                         zeroline=False
                     ))
 
-                    # legenda embaixo + margens (SEM facet_*_spacing para não dar erro)
+                    # Legenda embaixo + margens
                     fig.update_layout(
                         legend=dict(
                             orientation="h",
@@ -1675,17 +1677,31 @@ with tab_dist_mes:
                             x=0.0
                         ),
                         plot_bgcolor="rgba(0,0,0,0)",
-                        margin=dict(l=10, r=10, t=55, b=95),
+                        margin=dict(l=10, r=10, t=60, b=95),
                     )
 
-                    # ✅ títulos do facet sem "LOCALIDADE=" e MAIS BAIXOS
-                    # maior = sobe | menor = desce
-                    FACET_TITLE_Y = 0.90  # ajuste fino: 0.94 sobe / 0.86 desce
+                    # ==================================================
+                    # AJUSTE FINO DOS TÍTULOS DOS ESTADOS (FACETS)
+                    # - remove prefixos
+                    # - centraliza
+                    # - posiciona corretamente (sem invadir meses)
+                    # ==================================================
+                    FACET_TITLE_Y = 0.86   # ↓ diminua para descer | ↑ aumente para subir
+                    FACET_TITLE_X = 0.50   # centro horizontal
+                    FACET_FONT_SIZE = 13
+
                     for ann in fig.layout.annotations:
                         if ann.text and "=" in ann.text:
-                            ann.text = ann.text.split("=", 1)[1]  # fica só "PARÁ"
+                            ann.text = ann.text.split("=", 1)[1]  # fica só o estado
+                        ann.x = FACET_TITLE_X
                         ann.y = FACET_TITLE_Y
-                        ann.font = dict(size=12, color="white", family="Arial Black")
+                        ann.xanchor = "center"
+                        ann.yanchor = "bottom"
+                        ann.font = dict(
+                            size=FACET_FONT_SIZE,
+                            color="white",
+                            family="Arial Black"
+                        )
 
                     st.plotly_chart(fig, use_container_width=True)
 
