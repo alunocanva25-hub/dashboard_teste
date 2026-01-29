@@ -1279,11 +1279,7 @@ with tab_uf:
 
 # ==================================================
 # 📅 COMPARATIVO ANUAL (SEM OUTROS) — À PROVA DE ERROS
-# - não depende de tab_ano existir (auto-detecta / cai em st.container)
-# - remove OUTROS definitivamente
-# - QTD dentro | % em cima (separado por classe) | legenda embaixo
-# - sem grid + sem eixo Y
-# - quadro de totais na direita (comentado p/ mover)
+# - FIX: força barras aparecerem (opacity=1 + y-range explícito)
 # ==================================================
 
 # ✅ container “à prova de erro” (não quebra se tab_ano/tab_anual não existir)
@@ -1300,7 +1296,6 @@ else:
 with _container_ano:
     st.subheader("📅 Comparativo Anual — Procedente x Improcedente")
 
-    # helpers mínimos caso não existam no seu arquivo (para não quebrar)
     def _ok_col(c):
         try:
             return c is not None and str(c).strip() != "" and c in df.columns
@@ -1313,206 +1308,199 @@ with _container_ano:
         except Exception:
             return str(n)
 
-    # tenta usar seu _col_ok/_norm/_classificar se existir; senão usa fallback
     _col_ok_fn = _col_ok if "_col_ok" in globals() else _ok_col
     _norm_fn = _norm if "_norm" in globals() else (lambda s: s.astype(str).str.upper().str.strip())
     _classificar_fn = _classificar if "_classificar" in globals() else None
 
     if not _col_ok_fn(COL_DATA):
         st.warning("Coluna DATA não encontrada.")
+        st.stop()
+
+    base = df.copy()
+    base[COL_DATA] = pd.to_datetime(base[COL_DATA], errors="coerce", dayfirst=True)
+    base = base.dropna(subset=[COL_DATA]).copy()
+
+    if base.empty:
+        st.info("Sem datas válidas.")
+        st.stop()
+
+    # garante _CLASSE_
+    if _classificar_fn is not None:
+        base = _classificar_fn(base)
     else:
-        base = df.copy()
-        base[COL_DATA] = pd.to_datetime(base[COL_DATA], errors="coerce", dayfirst=True)
-        base = base.dropna(subset=[COL_DATA]).copy()
-
-        if base.empty:
-            st.info("Sem datas válidas.")
+        # fallback simples (evita quebrar)
+        if "_RES_" in base.columns:
+            res = base["_RES_"].astype(str).str.upper()
+        elif "RESULTADO" in base.columns:
+            res = base["RESULTADO"].astype(str).str.upper()
         else:
-            # garante _CLASSE_
-            if _classificar_fn is not None:
-                base = _classificar_fn(base)
-            else:
-                # fallback simples
-                if "_RES_" in base.columns:
-                    res = base["_RES_"].astype(str).str.upper()
-                    base["_CLASSE_"] = "OUTROS"
-                    base.loc[res.str.contains("IMPROCED", na=False), "_CLASSE_"] = "IMPROCEDENTE"
-                    base.loc[res.str.contains("PROCED", na=False), "_CLASSE_"] = "PROCEDENTE"
-                elif "RESULTADO" in base.columns:
-                    res = base["RESULTADO"].astype(str).str.upper()
-                    base["_CLASSE_"] = "OUTROS"
-                    base.loc[res.str.contains("IMPROCED", na=False), "_CLASSE_"] = "IMPROCEDENTE"
-                    base.loc[res.str.contains("PROCED", na=False), "_CLASSE_"] = "PROCEDENTE"
-                else:
-                    st.error("Não encontrei coluna RESULTADO/_RES_ para classificar. Ajuste _classificar().")
-                    st.stop()
+            st.error("Não encontrei coluna RESULTADO/_RES_ para classificar. Ajuste _classificar().")
+            st.stop()
 
-            # ✅ remove OUTROS definitivamente
-            base = base[base["_CLASSE_"].isin(["PROCEDENTE", "IMPROCEDENTE"])].copy()
+        base["_CLASSE_"] = "OUTROS"
+        base.loc[res.str.contains("IMPROCED", na=False), "_CLASSE_"] = "IMPROCEDENTE"
+        base.loc[res.str.contains("PROCED", na=False), "_CLASSE_"] = "PROCEDENTE"
 
-            if base.empty:
-                st.info("Sem dados após remover OUTROS.")
-            else:
-                base["ANO"] = base[COL_DATA].dt.year.astype(int)
+    # ✅ remove OUTROS definitivamente
+    base = base[base["_CLASSE_"].isin(["PROCEDENTE", "IMPROCEDENTE"])].copy()
+    if base.empty:
+        st.info("Sem dados após remover OUTROS.")
+        st.stop()
 
-                # filtro UF opcional (se existir COL_ESTADO)
-                if _col_ok_fn(COL_ESTADO):
-                    base[COL_ESTADO] = _norm_fn(base[COL_ESTADO])
-                    ufs_disp = ["TOTAL"] + sorted(base[COL_ESTADO].dropna().unique().tolist())
+    base["ANO"] = base[COL_DATA].dt.year.astype(int)
 
-                    _uf_padrao = "TOTAL"
-                    if "uf_sel" in globals() and isinstance(uf_sel, str) and uf_sel in ufs_disp:
-                        _uf_padrao = uf_sel
+    # filtro UF (opcional)
+    if _col_ok_fn(COL_ESTADO):
+        base[COL_ESTADO] = _norm_fn(base[COL_ESTADO])
+        ufs_disp = ["TOTAL"] + sorted(base[COL_ESTADO].dropna().unique().tolist())
+        idx = ufs_disp.index(uf_sel) if ("uf_sel" in globals() and isinstance(uf_sel, str) and uf_sel in ufs_disp) else 0
+        uf_comp = st.selectbox("Filtrar UF (opcional)", options=ufs_disp, index=idx, key="cmp_ano_uf_safe2")
+        if uf_comp != "TOTAL":
+            base = base[base[COL_ESTADO] == uf_comp].copy()
 
-                    idx = ufs_disp.index(_uf_padrao) if _uf_padrao in ufs_disp else 0
-                    uf_comp = st.selectbox("Filtrar UF (opcional)", options=ufs_disp, index=idx, key="cmp_ano_uf_safe")
-                    if uf_comp != "TOTAL":
-                        base = base[base[COL_ESTADO] == uf_comp].copy()
+    tab = (
+        base.groupby(["ANO", "_CLASSE_"])
+        .size()
+        .reset_index(name="QTD")
+    )
 
-                tab = (
-                    base.groupby(["ANO", "_CLASSE_"])
-                    .size()
-                    .reset_index(name="QTD")
-                )
+    if tab.empty:
+        st.info("Sem dados para o comparativo anual.")
+        st.stop()
 
-                if tab.empty:
-                    st.info("Sem dados para o comparativo anual.")
-                else:
-                    classes = ["PROCEDENTE", "IMPROCEDENTE"]
-                    anos = sorted(tab["ANO"].unique().tolist())
+    # garante anos + classes
+    classes = ["PROCEDENTE", "IMPROCEDENTE"]
+    anos = sorted(tab["ANO"].unique().tolist())
 
-                    # garante PROC/IMP para todos anos
-                    grid = (
-                        pd.DataFrame({"ANO": anos}).assign(_k=1)
-                        .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
-                        .drop(columns="_k")
-                    )
-                    tab = grid.merge(tab, on=["ANO", "_CLASSE_"], how="left").fillna({"QTD": 0})
-                    tab["QTD"] = tab["QTD"].astype(int)
+    grid = (
+        pd.DataFrame({"ANO": anos}).assign(_k=1)
+        .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
+        .drop(columns="_k")
+    )
+    tab = grid.merge(tab, on=["ANO", "_CLASSE_"], how="left").fillna({"QTD": 0})
+    tab["QTD"] = tab["QTD"].astype(int)
 
-                    # % por ano
-                    total_ano = tab.groupby("ANO")["QTD"].transform("sum").replace(0, 1)
-                    tab["PCT"] = (tab["QTD"] / total_ano * 100).round(1)
+    # % por ano
+    total_ano = tab.groupby("ANO")["QTD"].transform("sum").replace(0, 1)
+    tab["PCT"] = (tab["QTD"] / total_ano * 100).round(1)
 
-                    tab["ANO_TXT"] = tab["ANO"].astype(str)
-                    tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+    tab["ANO_TXT"] = tab["ANO"].astype(str)
+    tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
 
-                    # gráfico (px) — robusto
-                    fig = px.bar(
-                        tab,
-                        x="ANO_TXT",
-                        y="QTD",
-                        color="_CLASSE_",
-                        barmode="group",
-                        template="plotly_dark",
-                        category_orders={"ANO_TXT": [str(a) for a in anos], "_CLASSE_": classes},
-                        color_discrete_map={"PROCEDENTE": COR_PROC, "IMPROCEDENTE": COR_IMP},
-                        text="TXT_QTD",
-                    )
+    fig = px.bar(
+        tab,
+        x="ANO_TXT",
+        y="QTD",
+        color="_CLASSE_",
+        barmode="group",
+        template="plotly_dark",
+        category_orders={"ANO_TXT": [str(a) for a in anos], "_CLASSE_": classes},
+        color_discrete_map={"PROCEDENTE": COR_PROC, "IMPROCEDENTE": COR_IMP},
+        text="TXT_QTD",
+    )
 
-                    # QTD dentro
-                    fig.update_traces(
-                        textposition="inside",
-                        insidetextanchor="middle",
-                        cliponaxis=False
-                    )
+    # ✅ FIX CRÍTICO: força barras aparecerem
+    fig.update_traces(marker=dict(opacity=1.0), opacity=1.0)
 
-                    # sem grid / sem eixo Y
-                    fig.update_yaxes(visible=False, showticklabels=False, showgrid=False, zeroline=False, title="")
-                    fig.update_xaxes(type="category", showgrid=False, ticks="", title="ANO")
+    # QTD dentro
+    fig.update_traces(
+        textposition="inside",
+        insidetextanchor="middle",
+        cliponaxis=False
+    )
 
-                    # legenda embaixo
-                    if "_legend_bottom" in globals():
-                        fig = _legend_bottom(fig, y=-0.22)
-                    else:
-                        fig.update_layout(
-                            legend=dict(
-                                orientation="h",
-                                yanchor="top",
-                                y=-0.22,
-                                xanchor="left",
-                                x=0.0
-                            )
-                        )
+    # sem grid / sem eixo Y
+    fig.update_xaxes(type="category", showgrid=False, ticks="", title="ANO")
+    fig.update_yaxes(visible=False, showticklabels=False, showgrid=False, zeroline=False, title="")
 
-                    # margens (espaço para quadro)
-                    fig.update_layout(margin=dict(l=10, r=220, t=30, b=80), bargap=0.25, bargroupgap=0.12)
+    # ✅ FIX CRÍTICO: define range explícito (mesmo com eixo escondido)
+    y_max = max(int(tab.groupby("ANO")["QTD"].sum().max()), 1)
+    fig.update_yaxes(range=[0, y_max * 1.25])
 
-                    # % em cima (separado por classe)
-                    y_max = max(int(tab.groupby("ANO")["QTD"].sum().max()), 1)
-                    pad = max(5, int(y_max * 0.05))
+    # legenda embaixo
+    if "_legend_bottom" in globals():
+        fig = _legend_bottom(fig, y=-0.22)
+    else:
+        fig.update_layout(
+            legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="left", x=0.0, title_text="")
+        )
 
-                    # 👉 ajuste fino: deslocar % para esquerda/direita por classe
-                    XSHIFT_PROC = -18  # mais negativo = mais para ESQUERDA
-                    XSHIFT_IMP  = +18  # mais positivo = mais para DIREITA
+    # margem direita p/ quadro
+    fig.update_layout(margin=dict(l=10, r=220, t=30, b=80), bargap=0.25, bargroupgap=0.12)
 
-                    for _, r in tab.iterrows():
-                        if int(r["QTD"]) <= 0:
-                            continue
-                        xshift = XSHIFT_PROC if r["_CLASSE_"] == "PROCEDENTE" else XSHIFT_IMP
-                        fig.add_annotation(
-                            x=r["ANO_TXT"], xref="x",
-                            y=int(r["QTD"]) + pad, yref="y",
-                            text=f"<b>{float(r['PCT']):.1f}%</b>",
-                            showarrow=False,
-                            font=dict(size=11, family="Arial Black", color="white"),
-                            align="center",
-                            xshift=xshift,
-                        )
+    # % em cima (separado por classe)
+    pad = max(5, int(y_max * 0.05))
+    XSHIFT_PROC = -18  # mais negativo = mais ESQUERDA
+    XSHIFT_IMP  = +18  # mais positivo = mais DIREITA
 
-                    # quadro de totais (direita)
-                    proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
-                    improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
-                    total_geral = proc_total + improc_total
+    for _, r in tab.iterrows():
+        if int(r["QTD"]) <= 0:
+            continue
+        xshift = XSHIFT_PROC if r["_CLASSE_"] == "PROCEDENTE" else XSHIFT_IMP
+        fig.add_annotation(
+            x=r["ANO_TXT"], xref="x",
+            y=int(r["QTD"]) + pad, yref="y",
+            text=f"<b>{float(r['PCT']):.1f}%</b>",
+            showarrow=False,
+            font=dict(size=11, family="Arial Black", color="white"),
+            align="center",
+            xshift=xshift,
+        )
 
-                    # === POSIÇÃO DO QUADRO (ANUAL) ===
-                    BOX_X_ANO = 1.12  # (->) maior = mais DIREITA | menor = mais ESQUERDA
-                    BOX_Y_ANO = 0.98  # (^) maior = mais CIMA    | menor = mais BAIXO
+    # quadro de totais (direita)
+    proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
+    improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
+    total_geral = proc_total + improc_total
 
-                    fig.add_annotation(
-                        xref="paper", yref="paper",
-                        x=BOX_X_ANO, y=BOX_Y_ANO,
-                        showarrow=False, align="left",
-                        bgcolor="rgba(0,0,0,0.45)",
-                        bordercolor="rgba(255,255,255,0.25)",
-                        borderwidth=1,
-                        borderpad=10,
-                        text=(
-                            f"<span style='color:{COR_PROC};font-size:13px'><b>■ PROCEDENTE</b></span><br>"
-                            f"<span style='color:white;font-size:18px'><b>{_fmt_pt(proc_total)}</b></span><br><br>"
-                            f"<span style='color:{COR_IMP};font-size:13px'><b>■ IMPROCEDENTE</b></span><br>"
-                            f"<span style='color:white;font-size:18px'><b>{_fmt_pt(improc_total)}</b></span><br><br>"
-                            f"<span style='color:#fcba03;font-size:13px'><b>TOTAL</b></span><br>"
-                            f"<span style='color:#fcba03;font-size:20px'><b>{_fmt_pt(total_geral)}</b></span>"
-                        )
-                    )
+    # === POSIÇÃO DO QUADRO (ANUAL) ===
+    BOX_X_ANO = 1.12  # (->) maior = mais DIREITA | menor = mais ESQUERDA
+    BOX_Y_ANO = 0.98  # (^) maior = mais CIMA    | menor = mais BAIXO
 
-                    # (opcional) aplica seu estilo global se existir
-                    if "_style_clean" in globals():
-                        fig = _style_clean(fig)
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=BOX_X_ANO, y=BOX_Y_ANO,
+        showarrow=False, align="left",
+        bgcolor="rgba(0,0,0,0.45)",
+        bordercolor="rgba(255,255,255,0.25)",
+        borderwidth=1,
+        borderpad=10,
+        text=(
+            f"<span style='color:{COR_PROC};font-size:13px'><b>■ PROCEDENTE</b></span><br>"
+            f"<span style='color:white;font-size:18px'><b>{_fmt_pt(proc_total)}</b></span><br><br>"
+            f"<span style='color:{COR_IMP};font-size:13px'><b>■ IMPROCEDENTE</b></span><br>"
+            f"<span style='color:white;font-size:18px'><b>{_fmt_pt(improc_total)}</b></span><br><br>"
+            f"<span style='color:#fcba03;font-size:13px'><b>TOTAL</b></span><br>"
+            f"<span style='color:#fcba03;font-size:20px'><b>{_fmt_pt(total_geral)}</b></span>"
+        )
+    )
 
-                    st.plotly_chart(fig, use_container_width=True)
+    # aplica estilo global se existir
+    if "_style_clean" in globals():
+        fig = _style_clean(fig)
 
-                    # tabela (sem OUTROS)
-                    piv = (
-                        tab.pivot_table(index="ANO", columns="_CLASSE_", values="QTD", aggfunc="sum", fill_value=0)
-                        .reset_index()
-                    )
-                    if "PROCEDENTE" not in piv.columns:
-                        piv["PROCEDENTE"] = 0
-                    if "IMPROCEDENTE" not in piv.columns:
-                        piv["IMPROCEDENTE"] = 0
-                    piv["TOTAL"] = piv["PROCEDENTE"] + piv["IMPROCEDENTE"]
+    st.plotly_chart(fig, use_container_width=True)
 
-                    den = piv["TOTAL"].replace(0, 1)
-                    piv["%PROCEDENTE"] = (piv["PROCEDENTE"] / den * 100).round(1)
-                    piv["%IMPROCEDENTE"] = (piv["IMPROCEDENTE"] / den * 100).round(1)
+    # tabela (sem OUTROS)
+    piv = (
+        tab.pivot_table(index="ANO", columns="_CLASSE_", values="QTD", aggfunc="sum", fill_value=0)
+        .reset_index()
+    )
+    if "PROCEDENTE" not in piv.columns:
+        piv["PROCEDENTE"] = 0
+    if "IMPROCEDENTE" not in piv.columns:
+        piv["IMPROCEDENTE"] = 0
+    piv["TOTAL"] = piv["PROCEDENTE"] + piv["IMPROCEDENTE"]
 
-                    st.dataframe(
-                        piv[["ANO", "PROCEDENTE", "IMPROCEDENTE", "TOTAL", "%PROCEDENTE", "%IMPROCEDENTE"]],
-                        hide_index=True,
-                        use_container_width=True
-                    )
+    den = piv["TOTAL"].replace(0, 1)
+    piv["%PROCEDENTE"] = (piv["PROCEDENTE"] / den * 100).round(1)
+    piv["%IMPROCEDENTE"] = (piv["IMPROCEDENTE"] / den * 100).round(1)
+
+    st.dataframe(
+        piv[["ANO", "PROCEDENTE", "IMPROCEDENTE", "TOTAL", "%PROCEDENTE", "%IMPROCEDENTE"]],
+        hide_index=True,
+        use_container_width=True
+    )
+
 
 
 
