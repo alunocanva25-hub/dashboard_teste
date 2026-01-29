@@ -1278,31 +1278,37 @@ with tab_uf:
             st.plotly_chart(fig, use_container_width=True)
 
 # ==================================================
-# 📅 COMPARATIVO ANUAL (BLINDADO) — SEM OUTROS
-# - não quebra se tab_ano não existir
+# 📅 COMPARATIVO ANUAL (SEM OUTROS / SEM _classificar / BLINDADO)
+# - QTD dentro
+# - % em cima
+# - legenda embaixo
+# - quadro de totais à direita (com X/Y comentados)
 # ==================================================
 
-# ✅ Container blindado (se tab_ano existir, usa ele; se não, usa container normal)
-_ano_container = None
+# ✅ Container blindado (se tab_ano existir, usa; senão usa container normal)
 try:
-    _ano_container = tab_ano  # se existir
+    _ano_container = tab_ano
 except Exception:
     _ano_container = st.container()
 
 with _ano_container:
     st.subheader("📅 Comparativo Anual — Procedente x Improcedente")
 
-    def _ok_col(c):
+    # -------- helpers locais (não dependem do resto do script) --------
+    def _col_ok_local(c):
         try:
             return c is not None and str(c).strip() != "" and c in df.columns
         except Exception:
             return False
 
-    _col_ok_fn = _col_ok if "_col_ok" in globals() else _ok_col
-    _norm_fn = _norm if "_norm" in globals() else (lambda s: s.astype(str).str.upper().str.strip())
-    _classificar_fn = _classificar if "_classificar" in globals() else None
+    def _norm_txt(s):
+        return s.astype(str).str.upper().str.strip()
 
-    if not _col_ok_fn(COL_DATA):
+    def _fmt_int(n: int) -> str:
+        return f"{int(n):,}".replace(",", ".")
+
+    # -------- valida DATA --------
+    if not _col_ok_local(COL_DATA):
         st.warning("Coluna DATA não encontrada.")
         st.stop()
 
@@ -1314,35 +1320,47 @@ with _ano_container:
         st.info("Sem datas válidas.")
         st.stop()
 
-    # garante _CLASSE_
-    if _classificar_fn is not None:
-        base = _classificar_fn(base)
+    # -------- garante coluna de resultado para classificar --------
+    # Prioridade: _RES_ (se seu script já cria) -> senão usa COL_RESULTADO
+    if "_RES_" in base.columns:
+        res = _norm_txt(base["_RES_"].fillna(""))
+    elif _col_ok_local(COL_RESULTADO):
+        res = _norm_txt(base[COL_RESULTADO].fillna(""))
     else:
-        st.error("Função _classificar() não encontrada no seu script.")
+        st.warning("Não encontrei a coluna de RESULTADO (nem _RES_ nem COL_RESULTADO).")
         st.stop()
 
-    # ✅ normaliza classe + “conserta” variações
-    base["_CLASSE_"] = base["_CLASSE_"].astype(str).str.upper().str.strip()
-    base.loc[base["_CLASSE_"].str.contains("IMPROCED", na=False), "_CLASSE_"] = "IMPROCEDENTE"
-    base.loc[base["_CLASSE_"].str.contains("PROCED", na=False), "_CLASSE_"] = "PROCEDENTE"
+    # ✅ classificação correta (IMPROCEDENTE contém PROCED)
+    mask_improc = res.str.contains("IMPROCED", na=False)
+    mask_proc = res.str.contains("PROCED", na=False) & (~mask_improc)
+
+    base["_CLASSE_"] = None
+    base.loc[mask_proc, "_CLASSE_"] = "PROCEDENTE"
+    base.loc[mask_improc, "_CLASSE_"] = "IMPROCEDENTE"
 
     # ✅ remove OUTROS definitivamente
     base = base[base["_CLASSE_"].isin(["PROCEDENTE", "IMPROCEDENTE"])].copy()
     if base.empty:
-        st.warning("Após remover OUTROS, não sobraram dados. Verifique _classificar() / RESULTADO.")
+        st.warning("Não sobraram registros classificados como PROCEDENTE/IMPROCEDENTE. Verifique valores de RESULTADO.")
         st.stop()
 
     base["ANO"] = base[COL_DATA].dt.year.astype(int)
 
-    # filtro UF opcional
-    if _col_ok_fn(COL_ESTADO):
-        base[COL_ESTADO] = _norm_fn(base[COL_ESTADO])
+    # -------- filtro UF opcional --------
+    if _col_ok_local(COL_ESTADO):
+        base[COL_ESTADO] = _norm_txt(base[COL_ESTADO])
         ufs_disp = ["TOTAL"] + sorted(base[COL_ESTADO].dropna().unique().tolist())
-        idx = ufs_disp.index(uf_sel) if ("uf_sel" in globals() and isinstance(uf_sel, str) and uf_sel in ufs_disp) else 0
-        uf_comp = st.selectbox("Filtrar UF (opcional)", options=ufs_disp, index=idx, key="cmp_ano_uf_safe")
+        # tenta manter o uf_sel se existir
+        try:
+            idx = ufs_disp.index(uf_sel) if isinstance(uf_sel, str) and uf_sel in ufs_disp else 0
+        except Exception:
+            idx = 0
+
+        uf_comp = st.selectbox("Filtrar UF (opcional)", options=ufs_disp, index=idx, key="cmp_ano_uf")
         if uf_comp != "TOTAL":
             base = base[base[COL_ESTADO] == uf_comp].copy()
 
+    # -------- agrega por ANO e CLASSE --------
     tab = (
         base.groupby(["ANO", "_CLASSE_"])
         .size()
@@ -1356,7 +1374,7 @@ with _ano_container:
     classes = ["PROCEDENTE", "IMPROCEDENTE"]
     anos = sorted(tab["ANO"].unique().tolist())
 
-    # grid completo (garante 2 classes por ano)
+    # grid completo (garante as 2 classes por ano)
     grid = (
         pd.DataFrame({"ANO": anos}).assign(_k=1)
         .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
@@ -1365,13 +1383,14 @@ with _ano_container:
     tab = grid.merge(tab, on=["ANO", "_CLASSE_"], how="left").fillna({"QTD": 0})
     tab["QTD"] = tab["QTD"].astype(int)
 
+    # % por ano
     total_ano = tab.groupby("ANO")["QTD"].transform("sum").replace(0, 1)
     tab["PCT"] = (tab["QTD"] / total_ano * 100).round(1)
 
     tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
     tab["TXT_PCT"] = tab.apply(lambda r: "" if int(r["QTD"]) == 0 else f'{r["PCT"]:.1f}%', axis=1)
 
-    # gráfico base: QTD dentro
+    # -------- gráfico: QTD dentro --------
     fig = px.bar(
         tab,
         x="ANO",
@@ -1387,10 +1406,9 @@ with _ano_container:
         textposition="inside",
         insidetextanchor="middle",
         cliponaxis=False,
-        marker_opacity=1.0
     )
 
-    # % alinhada: trace invisível só para %
+    # -------- % em cima (trace invisível) --------
     fig_pct = px.bar(
         tab,
         x="ANO",
@@ -1414,52 +1432,46 @@ with _ano_container:
     for tr in fig_pct.data:
         fig.add_trace(tr)
 
-    # seus estilos (se existirem)
-    if "_style_clean" in globals():
-        fig = _style_clean(fig)
-    else:
-        fig.update_xaxes(showgrid=False)
-        fig.update_yaxes(showgrid=False, visible=False)
+    # -------- estilo: sem grid e sem eixo esquerdo --------
+    fig.update_xaxes(showgrid=False, ticks="")
+    fig.update_yaxes(showgrid=False, visible=False, ticks="", zeroline=False)
 
-    if "_legend_bottom" in globals():
-        fig = _legend_bottom(fig, y=-0.22)
-    else:
-        fig.update_layout(legend=dict(orientation="h", y=-0.22, x=0, title_text=""))
+    # -------- legenda embaixo (padrão) --------
+    fig.update_layout(
+        legend=dict(orientation="h", y=-0.22, x=0, title_text=""),
+        margin=dict(l=10, r=220, t=30, b=80),
+    )
 
-    fig.update_layout(margin=dict(l=10, r=220, t=30, b=80))
-
-    # === POSIÇÃO DO QUADRO (ANUAL) ===
+    # ===== QUADRO DE TOTAIS (DIREITA) =====
+    # Ajuste fino:
     BOX_X_ANO = 1.12  # (->) maior = mais DIREITA | menor = mais ESQUERDA
     BOX_Y_ANO = 0.98  # (^) maior = mais CIMA    | menor = mais BAIXO
 
     proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
     improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
-    total_geral2 = proc_total + improc_total
+    total_geral = proc_total + improc_total
 
-    if "_add_summary_box" in globals():
-        fig = _add_summary_box(fig, proc_total, improc_total, 0, total_geral2, box_x=BOX_X_ANO, box_y=BOX_Y_ANO)
-    else:
-        fig.add_annotation(
-            xref="paper", yref="paper",
-            x=BOX_X_ANO, y=BOX_Y_ANO,
-            showarrow=False, align="left",
-            bgcolor="rgba(0,0,0,0.45)",
-            bordercolor="rgba(255,255,255,0.25)",
-            borderwidth=1,
-            borderpad=10,
-            text=(
-                f"<span style='color:{COR_PROC};font-size:13px'><b>■ PROCEDENTE</b></span><br>"
-                f"<span style='color:white;font-size:18px'><b>{proc_total:,}</b></span><br><br>"
-                f"<span style='color:{COR_IMP};font-size:13px'><b>■ IMPROCEDENTE</b></span><br>"
-                f"<span style='color:white;font-size:18px'><b>{improc_total:,}</b></span><br><br>"
-                f"<span style='color:#fcba03;font-size:13px'><b>TOTAL</b></span><br>"
-                f"<span style='color:#fcba03;font-size:20px'><b>{total_geral2:,}</b></span>"
-            ).replace(",", ".")
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=BOX_X_ANO, y=BOX_Y_ANO,
+        showarrow=False, align="left",
+        bgcolor="rgba(0,0,0,0.45)",
+        bordercolor="rgba(255,255,255,0.25)",
+        borderwidth=1,
+        borderpad=10,
+        text=(
+            f"<span style='color:{COR_PROC};font-size:13px'><b>■ PROCEDENTE</b></span><br>"
+            f"<span style='color:white;font-size:18px'><b>{_fmt_int(proc_total)}</b></span><br><br>"
+            f"<span style='color:{COR_IMP};font-size:13px'><b>■ IMPROCEDENTE</b></span><br>"
+            f"<span style='color:white;font-size:18px'><b>{_fmt_int(improc_total)}</b></span><br><br>"
+            f"<span style='color:#fcba03;font-size:13px'><b>TOTAL</b></span><br>"
+            f"<span style='color:#fcba03;font-size:20px'><b>{_fmt_int(total_geral)}</b></span>"
         )
+    )
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # tabela (sem OUTROS)
+    # -------- tabela (sem OUTROS) --------
     piv = (
         tab.pivot_table(index="ANO", columns="_CLASSE_", values="QTD", aggfunc="sum", fill_value=0)
         .reset_index()
@@ -1468,13 +1480,14 @@ with _ano_container:
         piv["PROCEDENTE"] = 0
     if "IMPROCEDENTE" not in piv.columns:
         piv["IMPROCEDENTE"] = 0
-    piv["TOTAL"] = piv["PROCEDENTE"] + piv["IMPROCEDENTE"]
 
+    piv["TOTAL"] = piv["PROCEDENTE"] + piv["IMPROCEDENTE"]
     den = piv["TOTAL"].replace(0, 1)
     piv["%PROCEDENTE"] = (piv["PROCEDENTE"] / den * 100).round(1)
     piv["%IMPROCEDENTE"] = (piv["IMPROCEDENTE"] / den * 100).round(1)
 
     st.dataframe(piv, hide_index=True, use_container_width=True)
+
 
 
 
