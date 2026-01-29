@@ -1278,7 +1278,7 @@ with tab_uf:
             st.plotly_chart(fig, use_container_width=True)
 
 # ==================================================
-# 📅 COMPARATIVO ANUAL
+# 📅 COMPARATIVO ANUAL (CORRIGIDO: usa base global p/ comparar anos)
 # ==================================================
 with tab_anual:
     st.subheader("📅 Comparativo Anual — Procedente x Improcedente")
@@ -1286,50 +1286,69 @@ with tab_anual:
     if COL_DATA is None:
         st.warning("Coluna DATA não encontrada.")
     else:
-        base = df_periodo.copy()
+        # ✅ Base global para comparar anos (evita ficar vazio por filtros do período)
+        base = df.copy()
+
+        # (opcional) respeita UF selecionada no painel principal
+        # se você quiser ignorar UF aqui, comente este IF inteiro
+        if "uf_sel" in st.session_state and st.session_state.uf_sel != "TOTAL" and COL_ESTADO is not None:
+            uf_atual = str(st.session_state.uf_sel).upper().strip()
+            base = base[base[COL_ESTADO].astype(str).str.upper().str.strip() == uf_atual].copy()
+
         base[COL_DATA] = pd.to_datetime(base[COL_DATA], errors="coerce", dayfirst=True)
         base = base.dropna(subset=[COL_DATA]).copy()
 
         if base.empty:
-            st.info("Sem dados com DATA válida no período.")
+            st.info("Sem dados com DATA válida.")
         else:
-            base["ANO"] = base[COL_DATA].dt.year.astype(int).astype(str)
-
-            tab = _make_tab_counts_sem_outros(base, "ANO")
-            if tab.empty:
-                st.info("Sem dados para Comparativo Anual.")
+            # garante _RES_
+            if "_RES_" not in base.columns:
+                st.warning("Coluna interna '_RES_' não encontrada.")
             else:
-                ord_anos = sorted(tab["DIM"].unique().tolist(), key=lambda x: int(x))
-                fig = _plot_stack_with_pct_and_box_sem_outros(
-                    tab,
-                    x_title="ANO",
-                    chart_title="📅 Comparativo Anual — Procedente x Improcedente",
-                    category_order=ord_anos,
-                    box_x=1.18,
-                    box_y=0.98,
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                base["ANO"] = base[COL_DATA].dt.year.astype(int).astype(str)
+
+                tab = _make_tab_counts_sem_outros(base, "ANO")
+
+                if tab.empty:
+                    st.info("Sem dados para Comparativo Anual (após remover OUTROS).")
+                else:
+                    ord_anos = sorted(tab["DIM"].unique().tolist(), key=lambda x: int(x))
+
+                    fig = _plot_stack_with_pct_and_box_sem_outros(
+                        tab,
+                        x_title="ANO",
+                        chart_title="📅 Comparativo Anual — Procedente x Improcedente",
+                        category_order=ord_anos,
+                        box_x=1.18,  # 👉 mais p/ direita/esquerda
+                        box_y=0.98,  # 👉 mais p/ cima/baixo
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
 
 # ==================================================
-# 📆 DISTRIBUIDORA POR MÊS (UF por facet)
+# 📆 DISTRIBUIDORA POR MÊS (MELHORADO)
+# - Remove OUTROS
+# - Meses abreviados em TODOS os facets
+# - QTD dentro (com corte mínimo p/ não poluir)
+# - Títulos (UF) limpos e com SHIFT ajustável (sem sobrepor meses/barras)
 # ==================================================
 with tab_dist_mes:
-    st.subheader("📆 Distribuidora por Mês (somente AM/AS, sem OUTROS)")
+    st.subheader("📆 Distribuidora por Mês")
 
     if COL_DATA is None or COL_ESTADO is None:
         st.warning("Preciso das colunas DATA e ESTADO/UF.")
     else:
-        base = df_periodo.copy()
+        base = df_periodo.copy()  # aqui faz sentido usar o período selecionado
         base[COL_DATA] = pd.to_datetime(base[COL_DATA], errors="coerce", dayfirst=True)
         base = base.dropna(subset=[COL_DATA]).copy()
 
         if base.empty:
             st.info("Sem dados com DATA válida no período.")
         else:
-            # classifica e remove OUTROS
             if "_RES_" not in base.columns:
                 st.warning("Coluna interna '_RES_' não encontrada.")
             else:
+                # classifica e remove OUTROS
                 base = classificar_resultado(base, "_RES_")
                 base = base[base["_CLASSE_"].isin(["PROCEDENTE", "IMPROCEDENTE"])].copy()
 
@@ -1338,6 +1357,7 @@ with tab_dist_mes:
                 else:
                     base[COL_ESTADO] = base[COL_ESTADO].astype(str).str.upper().str.strip()
 
+                    # meses abreviados
                     MESES_ABREV = {1:"jan",2:"fev",3:"mar",4:"abr",5:"mai",6:"jun",7:"jul",8:"ago",9:"set",10:"out",11:"nov",12:"dez"}
                     MESES_ORDEM = [MESES_ABREV[i] for i in range(1, 13)]
 
@@ -1347,6 +1367,8 @@ with tab_dist_mes:
                     base = base[base[COL_DATA].dt.year == int(ano_sel2)].copy()
 
                     top_n = st.slider("Top N estados", 3, 30, 10, key="dist_mes_topn")
+
+                    # Top por volume total no ano
                     top = (
                         base.groupby(COL_ESTADO)
                         .size()
@@ -1388,6 +1410,10 @@ with tab_dist_mes:
                         )
                         tab["QTD"] = tab["QTD"].astype(int)
 
+                        # ✅ corte p/ texto dentro não poluir
+                        MIN_LABEL = st.slider("Mostrar QTD dentro a partir de", 0, 300, 50, key="dist_mes_minlabel")
+                        tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) < int(MIN_LABEL) else str(int(v)))
+
                         fig = px.bar(
                             tab.sort_values("MES_NUM"),
                             x="MÊS",
@@ -1396,45 +1422,33 @@ with tab_dist_mes:
                             barmode="stack",
                             facet_col=COL_ESTADO,
                             facet_col_wrap=2,
+                            facet_col_spacing=0.06,   # ✅ espaçamento horizontal
+                            facet_row_spacing=0.14,   # ✅ espaçamento vertical (deixa mais “respirado”)
                             template="plotly_dark",
                             category_orders={"MÊS": MESES_ORDEM, "_CLASSE_": classes},
-                            color_discrete_map={
-                                "PROCEDENTE": COR_PROC,
-                                "IMPROCEDENTE": COR_IMP,
-                            }
+                            color_discrete_map={"PROCEDENTE": COR_PROC, "IMPROCEDENTE": COR_IMP},
                         )
 
-                        # texto por trace (sem vazamento)
+                        # texto por trace (sem “vazar”)
                         for tr in fig.data:
                             classe = tr.name
                             txt = []
                             for mes in tr.x:
-                                v = tab.loc[(tab["MÊS"] == mes) & (tab["_CLASSE_"] == classe), "QTD"]
-                                txt.append("" if (len(v) == 0 or int(v.iloc[0]) == 0) else str(int(v.iloc[0])))
+                                # pega valor desse mês + classe (primeiro match)
+                                v = tab.loc[(tab["MÊS"] == mes) & (tab["_CLASSE_"] == classe), "TXT_QTD"]
+                                txt.append(v.iloc[0] if len(v) else "")
                             tr.text = txt
                             tr.textposition = "inside"
                             tr.insidetextanchor = "middle"
                             tr.cliponaxis = False
 
-                        # meses visíveis em todos facets + sem grid
-                        fig.for_each_xaxis(lambda a: a.update(
-                            showgrid=False,
-                            ticks="",
-                            tickmode="array",
-                            tickvals=MESES_ORDEM,
-                            ticktext=MESES_ORDEM,
-                            tickangle=0,
-                            showticklabels=True
-                        ))
-                        fig.for_each_yaxis(lambda a: a.update(
-                            visible=False,
-                            showticklabels=False,
-                            showgrid=False,
-                            zeroline=False
-                        ))
+                        # sem grid e sem eixo Y
+                        fig.for_each_yaxis(lambda a: a.update(visible=False, showticklabels=False, showgrid=False, zeroline=False))
+                        fig.for_each_xaxis(lambda a: a.update(showgrid=False, ticks="", showticklabels=True, tickangle=0))
 
-                        # legenda embaixo
+                        # legenda embaixo + layout mais claro
                         fig.update_layout(
+                            bargap=0.25,
                             legend=dict(
                                 orientation="h",
                                 yanchor="top",
@@ -1443,24 +1457,33 @@ with tab_dist_mes:
                                 x=0.0
                             ),
                             plot_bgcolor="rgba(0,0,0,0)",
-                            margin=dict(l=10, r=10, t=60, b=95),
+                            margin=dict(l=10, r=10, t=70, b=95),
                         )
+                        fig.update_layout(xaxis_title="MÊS", yaxis_title="")
 
-                        # títulos dos facets: só estado e ajustados
-                        FACET_TITLE_Y = 0.86   # ↓ desce | ↑ sobe
-                        FACET_TITLE_X = 0.50
-                        FACET_FONT_SIZE = 13
+                        # ==================================================
+                        # TÍTULOS DOS FACETS (UF):
+                        # - limpa "COL=UF"
+                        # - NÃO força todos para mesma posição
+                        # - só aplica um SHIFT (ajustável)
+                        # ==================================================
+                        TITLE_SHIFT_Y = 0.035  # 👉 AUMENTE para descer | DIMINUA para subir
+                        TITLE_FONT_SIZE = 13
 
                         for ann in fig.layout.annotations:
+                            # limpa prefixo "COL=..."
                             if ann.text and "=" in ann.text:
                                 ann.text = ann.text.split("=", 1)[1]
-                            ann.x = FACET_TITLE_X
-                            ann.y = FACET_TITLE_Y
+
+                            # ✅ mantém x/y original do facet e só desloca um pouco
+                            ann.y = ann.y - TITLE_SHIFT_Y
+
                             ann.xanchor = "center"
                             ann.yanchor = "bottom"
-                            ann.font = dict(size=FACET_FONT_SIZE, color="white", family="Arial Black")
+                            ann.font = dict(size=TITLE_FONT_SIZE, color="white", family="Arial Black")
 
                         st.plotly_chart(fig, use_container_width=True)
+
 
 # ==================================================
 # 📌 DEMANDA x DEMANDAS (GERAL) — X vs RESTANTE
