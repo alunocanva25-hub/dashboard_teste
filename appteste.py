@@ -1710,8 +1710,8 @@ with tab_ano:
                         # % acima (ALINHADA por barra)
                         # - Ajuste fino aqui se quiser mover o texto:
                         # -----------------------------
-                        XSHIFT_PROC = -160  # <- mais negativo = mais pra ESQUERDA
-                        XSHIFT_IMP  =  160  # -> mais positivo = mais pra DIREITA
+                        XSHIFT_PROC = -120  # <- mais negativo = mais pra ESQUERDA
+                        XSHIFT_IMP  =  120  # -> mais positivo = mais pra DIREITA
                         YSHIFT_PCT  =  14  # ^  maior = mais pra CIMA | menor = mais pra BAIXO
 
                         pct_map = {(int(r["ANO"]), r["_CLASSE_"]): float(r["PCT"]) for _, r in tab.iterrows()}
