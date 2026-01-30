@@ -2059,212 +2059,262 @@ with tab_dist_mes:
 
                         st.plotly_chart(fig, use_container_width=True)
 
-# ==================================================
-# 🧾 DEMANDA x DEMANDAS (UF) — (X vs OUTRAS DEMANDAS)
-# - Visual no estilo do "ACUMULADO MENSAL DE NOTAS AM–AS" (QTD dentro / % em cima / legenda embaixo)
-# - Cores: DEMANDA ESCOLHIDA (X) vs OUTRAS DEMANDAS (RESTANTE)
-# - Permite escolher a demanda (X) e filtrar AM/AS SOMENTE AQUI
-# ==================================================
-with tab_demanda_uf:
-    st.subheader("🧾 Demanda x Demandas (UF) — (X vs Outras Demandas)")
+# ======================================================
+# 🧾 DEMANDA x DEMANDAS (UF) — (DEMANDA ESCOLHIDA vs OUTRAS)
+# PADRÃO "ACUMULADO MENSAL": % no gráfico, QTD na tabelinha embaixo,
+# e quadro de totais na direita.
+#
+# PRÉ-REQ:
+#   import pandas as pd
+#   import plotly.express as px
+#
+# COMO USAR (exemplo):
+#   fig, tabela = demanda_x_demandas_uf_fig_e_tabela(
+#       df_base=df_periodo,
+#       col_uf=COL_ESTADO,
+#       col_demanda=COL_DEMANDA,
+#       demanda_x=dem_x,
+#       col_tipo=COL_TIPO,          # opcional
+#       filtro_tipo=opt_tipo,       # opcional ("Apenas AM"|"Apenas AS"|"AM + AS (todas)")
+#       cor_x="#4CAF50",
+#       cor_out="#FF7F0E",
+#       cor_tot="#fcba03"
+#   )
+#   st.plotly_chart(fig, use_container_width=True)
+#   st.dataframe(tabela, hide_index=True, use_container_width=True)
+# ======================================================
 
-    # -----------------------------
-    # Colunas necessárias
-    # -----------------------------
-    COL_UF_LOCAL      = COL_ESTADO  # você já tem COL_ESTADO mapeado fora
-    COL_DEMANDA_LOCAL = achar_coluna(df, ["DEMANDA SOLICITADA", "DEMANDA_SOLICITADA", "DEMANDA"])
-    COL_TIPO_LOCAL    = achar_coluna(df, ["TIPO", "TIPO NOTA", "TIPO_DE_NOTA"])  # se existir
+def demanda_x_demandas_uf_fig_e_tabela(
+    df_base,
+    col_uf,
+    col_demanda,
+    demanda_x,
+    col_tipo=None,
+    filtro_tipo=None,  # "Apenas AM" | "Apenas AS" | "AM + AS (todas)"
+    cor_x="#4CAF50",   # cor da DEMANDA escolhida
+    cor_out="#FF7F0E", # cor das OUTRAS DEMANDAS
+    cor_tot="#fcba03"  # cor do TOTAL
+):
+    # ---------------------------
+    # validações básicas
+    # ---------------------------
+    if df_base is None or df_base.empty:
+        return None, None
+    if not col_uf or not col_demanda:
+        return None, None
+    if col_uf not in df_base.columns or col_demanda not in df_base.columns:
+        return None, None
 
-    if not _col_ok(COL_UF_LOCAL):
-        st.warning("Coluna UF/ESTADO não encontrada.")
-    elif COL_DEMANDA_LOCAL is None:
-        st.warning("Coluna 'DEMANDA SOLICITADA' não encontrada.")
-    else:
-        # -----------------------------
-        # Base do período (como nos outros relatórios)
-        # -----------------------------
-        base = df_periodo.copy()
-        base = base.dropna(subset=[COL_UF_LOCAL, COL_DEMANDA_LOCAL]).copy()
+    base = df_base.dropna(subset=[col_uf, col_demanda]).copy()
+    if base.empty:
+        return None, None
 
-        if base.empty:
-            st.info("Sem dados no período.")
+    # normalizações
+    base[col_uf] = base[col_uf].astype(str).str.upper().str.strip()
+    base[col_demanda] = base[col_demanda].astype(str).str.upper().str.strip()
+    dem_x = str(demanda_x).upper().strip()
+
+    # ---------------------------
+    # filtro AM/AS (somente aqui)
+    # ---------------------------
+    if col_tipo and (col_tipo in base.columns) and filtro_tipo:
+        tipo = base[col_tipo].astype(str).str.upper().str.strip()
+        if filtro_tipo == "Apenas AM":
+            base = base[tipo.str.contains(r"\bAM\b", na=False)].copy()
+        elif filtro_tipo == "Apenas AS":
+            base = base[tipo.str.contains(r"\bAS\b", na=False)].copy()
         else:
-            # Normalização
-            base[COL_UF_LOCAL] = _norm(base[COL_UF_LOCAL])
-            base["_DEMANDA_"]   = _norm(base[COL_DEMANDA_LOCAL])
+            pass  # AM + AS (todas)
 
-            # -----------------------------
-            # Filtro AM / AS (SÓ AQUI)
-            # -----------------------------
-            if COL_TIPO_LOCAL is not None and _col_ok(COL_TIPO_LOCAL):
-                opt_tipo = st.radio(
-                    "Tipo de nota (somente neste relatório)",
-                    options=["AM + AS (todas)", "Apenas AM", "Apenas AS"],
-                    index=0,
-                    horizontal=True,
-                    key="demanda_uf_tipo"
-                )
+    if base.empty:
+        return None, None
 
-                tipo = base[COL_TIPO_LOCAL].astype(str).str.upper().str.strip()
-                if opt_tipo == "Apenas AM":
-                    base = base[tipo.str.contains(r"\bAM\b", na=False)].copy()
-                elif opt_tipo == "Apenas AS":
-                    base = base[tipo.str.contains(r"\bAS\b", na=False)].copy()
+    # ---------------------------
+    # grupos: demanda escolhida vs outras
+    # ---------------------------
+    base["GRUPO"] = "OUTRAS DEMANDAS"
+    base.loc[base[col_demanda] == dem_x, "GRUPO"] = f"DEMANDA X: {dem_x}"
+    grupos = [f"DEMANDA X: {dem_x}", "OUTRAS DEMANDAS"]
 
-            if base.empty:
-                st.info("Sem dados após o filtro AM/AS.")
-            else:
-                # -----------------------------
-                # Escolha da Demanda X
-                # -----------------------------
-                demandas = sorted(base["_DEMANDA_"].dropna().unique().tolist())
-                if not demandas:
-                    st.info("Sem demandas válidas para comparar.")
-                else:
-                    dem_x = st.selectbox("Escolha a demanda (X)", demandas, index=0, key="demanda_uf_x")
+    # agrega por UF e GRUPO
+    raw = (
+        base.groupby([col_uf, "GRUPO"])
+        .size()
+        .reset_index(name="QTD")
+    )
 
-                    # -----------------------------
-                    # Agrupa: X vs RESTANTE por UF
-                    # -----------------------------
-                    base["GRUPO"] = "OUTRAS DEMANDAS"
-                    base.loc[base["_DEMANDA_"] == dem_x, "GRUPO"] = f"DEMANDA X: {dem_x}"
+    # garante os 2 grupos em todas as UFs
+    ufs = sorted(base[col_uf].dropna().unique().tolist())
+    grid = (
+        pd.DataFrame({col_uf: ufs}).assign(_k=1)
+        .merge(pd.DataFrame({"GRUPO": grupos}).assign(_k=1), on="_k")
+        .drop(columns="_k")
+    )
+    dados = grid.merge(raw, on=[col_uf, "GRUPO"], how="left").fillna({"QTD": 0})
+    dados["QTD"] = dados["QTD"].astype(int)
 
-                    # Tabela UF x GRUPO
-                    tab = (
-                        base.groupby([COL_UF_LOCAL, "GRUPO"])
-                            .size()
-                            .reset_index(name="QTD")
-                    )
+    # % por UF (participação dentro da UF)
+    total_uf = dados.groupby(col_uf)["QTD"].transform("sum")
+    denom = total_uf.replace(0, 1)
+    dados["PCT"] = ((dados["QTD"] / denom) * 100).round(0).astype(int)
 
-                    # Garante que todo UF tenha as 2 colunas
-                    grupos_ordem = [f"DEMANDA X: {dem_x}", "OUTRAS DEMANDAS"]
-                    ufs_ordem = (
-                        base.groupby(COL_UF_LOCAL).size().sort_values(ascending=False).index.tolist()
-                    )
+    # label de % (somente na barra da Demanda X)
+    dados["LABEL"] = ""
+    mask_x = dados["GRUPO"] == f"DEMANDA X: {dem_x}"
+    dados.loc[mask_x, "LABEL"] = dados.loc[mask_x, "PCT"].astype(str) + "%"
 
-                    grid = (
-                        pd.DataFrame({COL_UF_LOCAL: ufs_ordem}).assign(_k=1)
-                          .merge(pd.DataFrame({"GRUPO": grupos_ordem}).assign(_k=1), on="_k")
-                          .drop(columns="_k")
-                    )
+    # ---------------------------
+    # tabela (embaixo) por UF: X / OUTRAS / TOTAL
+    # ---------------------------
+    tab = (
+        dados.pivot_table(index=col_uf, columns="GRUPO", values="QTD", aggfunc="sum", fill_value=0)
+        .reset_index()
+    )
+    if f"DEMANDA X: {dem_x}" not in tab.columns:
+        tab[f"DEMANDA X: {dem_x}"] = 0
+    if "OUTRAS DEMANDAS" not in tab.columns:
+        tab["OUTRAS DEMANDAS"] = 0
 
-                    tab = (
-                        grid.merge(tab, on=[COL_UF_LOCAL, "GRUPO"], how="left")
-                            .fillna({"QTD": 0})
-                    )
-                    tab["QTD"] = tab["QTD"].astype(int)
+    tab["TOTAL"] = tab[f"DEMANDA X: {dem_x}"] + tab["OUTRAS DEMANDAS"]
 
-                    # -----------------------------
-                    # Percentual por UF (participação do X no total da UF)
-                    # -----------------------------
-                    piv = tab.pivot_table(index=COL_UF_LOCAL, columns="GRUPO", values="QTD", aggfunc="sum", fill_value=0).reset_index()
-                    for g in grupos_ordem:
-                        if g not in piv.columns:
-                            piv[g] = 0
+    def _fmt_int(v: int) -> str:
+        return f"{int(v):,}".replace(",", ".")
 
-                    piv["TOTAL_UF"] = piv[grupos_ordem[0]] + piv[grupos_ordem[1]]
-                    den = piv["TOTAL_UF"].replace(0, 1)
+    # ---------------------------
+    # FIG (estilo do acumulado)
+    # ---------------------------
+    fig = px.bar(
+        dados,
+        x=col_uf,
+        y="QTD",
+        color="GRUPO",
+        barmode="stack",
+        text="LABEL",  # % no gráfico
+        template="plotly_dark",
+        category_orders={"GRUPO": grupos, col_uf: ufs},
+        color_discrete_map={
+            f"DEMANDA X: {dem_x}": cor_x,
+            "OUTRAS DEMANDAS": cor_out,
+        },
+    )
 
-                    # % que queremos exibir em cima do “bloco” (UF) — % do X na UF
-                    piv["PCT_X"] = (piv[grupos_ordem[0]] / den * 100).round(1)
+    # % em cima
+    fig.update_traces(textposition="outside", cliponaxis=False)
 
-                    # Junta de volta pra usar no plot (sem bagunçar)
-                    tab = tab.merge(piv[[COL_UF_LOCAL, "TOTAL_UF", "PCT_X"]], on=COL_UF_LOCAL, how="left")
+    # limpa eixo Y e grades
+    fig.update_yaxes(visible=False, showgrid=False, zeroline=False, showticklabels=False, title_text="")
+    fig.update_xaxes(showgrid=False, ticks="", title_text="")
 
-                    # -----------------------------
-                    # Textos
-                    # -----------------------------
-                    tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+    # remove legenda padrão (a legenda fica na tabelinha)
+    fig.update_layout(
+        height=560,
+        showlegend=False,
+        margin=dict(l=120, r=220, t=50, b=200),
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
 
-                    # -----------------------------
-                    # Cores (estilo "Acumulado Mensal")
-                    # (ajuste se quiser)
-                    # -----------------------------
-                    COR_X   = "#1f77b4"  # cor da DEMANDA X (azul)
-                    COR_OUT = "#ff7f0e"  # cor das OUTRAS DEMANDAS (laranja)
+    # ---------------------------
+    # TABELINHA EMBAIXO (3 linhas): X / OUTRAS / TOTAL
+    # ---------------------------
+    # AJUSTE AQUI para subir/descer a tabelinha:
+    y_base = -0.23   # ↑ aumenta (menos negativo) = sobe | ↓ diminui (mais negativo) = desce
+    dy = 0.055
 
-                    # -----------------------------
-                    # Gráfico (barras agrupadas)
-                    # -----------------------------
-                    fig = px.bar(
-                        tab,
-                        x=COL_UF_LOCAL,
-                        y="QTD",
-                        color="GRUPO",
-                        barmode="group",
-                        template="plotly_dark",
-                        category_orders={COL_UF_LOCAL: ufs_ordem, "GRUPO": grupos_ordem},
-                        color_discrete_map={
-                            grupos_ordem[0]: COR_X,
-                            grupos_ordem[1]: COR_OUT,
-                        },
-                    )
+    # linhas horizontais
+    line_style = dict(color="rgba(255,255,255,0.25)", width=1)
+    for k in range(3):
+        y_line = y_base - (k * dy)
+        fig.add_shape(
+            type="line", xref="paper", yref="paper",
+            x0=0, x1=1, y0=y_line, y1=y_line,
+            line=line_style
+        )
 
-                    # QTD dentro (como no acumulado)
-                    fig.update_traces(
-                        text=tab["TXT_QTD"],
-                        textposition="inside",
-                        insidetextanchor="middle",
-                        cliponaxis=False
-                    )
+    # números por UF
+    for _, r in tab.iterrows():
+        uf = r[col_uf]
+        vx = _fmt_int(r[f"DEMANDA X: {dem_x}"])
+        vo = _fmt_int(r["OUTRAS DEMANDAS"])
+        vt = _fmt_int(r["TOTAL"])
 
-                    # -----------------------------
-                    # % em cima do "bloco" da UF (mostrar uma vez por UF)
-                    # - posição: acima do maior valor da UF
-                    # -----------------------------
-                    # pega o maior valor por UF, para posicionar a % acima
-                    max_uf = (
-                        tab.groupby(COL_UF_LOCAL)["QTD"].max()
-                           .reindex(ufs_ordem)
-                           .fillna(0)
-                           .astype(int)
-                    )
-                    # ajuste fino da altura do texto (%)
-                    # -> aumente para ficar mais alto
-                    PCT_PAD_FACTOR = 0.12
-                    pad = (max_uf.max() if max_uf.max() > 0 else 1) * PCT_PAD_FACTOR
+        fig.add_annotation(
+            x=uf, xref="x",
+            yref="paper", y=y_base,
+            text=f"<span style='font-family:monospace;font-size:14px;color:{cor_x};'><b>{vx}</b></span>",
+            showarrow=False, align="center",
+        )
+        fig.add_annotation(
+            x=uf, xref="x",
+            yref="paper", y=y_base - dy,
+            text=f"<span style='font-family:monospace;font-size:14px;color:{cor_out};'><b>{vo}</b></span>",
+            showarrow=False, align="center",
+        )
+        fig.add_annotation(
+            x=uf, xref="x",
+            yref="paper", y=y_base - (2 * dy),
+            text=f"<span style='font-family:monospace;font-size:14px;color:{cor_tot};'><b>{vt}</b></span>",
+            showarrow=False, align="center",
+        )
 
-                    fig.add_scatter(
-                        x=piv[COL_UF_LOCAL],
-                        y=max_uf.values.astype(float) + pad,
-                        mode="text",
-                        text=[("" if int(t) == 0 else f"{p:.1f}%") for t, p in zip(piv["TOTAL_UF"], piv["PCT_X"])],
-                        textposition="middle center",
-                        showlegend=False,
-                        textfont=dict(size=12, family="Arial Black", color="white"),
-                        hoverinfo="skip",
-                    )
+    # legenda da tabelinha à esquerda
+    x_leg = -0.08
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=x_leg, y=y_base,
+        text=(f"<span style='color:{cor_x};font-size:16px'>■</span> "
+              f"<span style='color:white;font-size:14px'><b>DEMANDA X</b></span>"),
+        showarrow=False, align="left",
+    )
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=x_leg, y=y_base - dy,
+        text=(f"<span style='color:{cor_out};font-size:16px'>■</span> "
+              f"<span style='color:white;font-size:14px'><b>OUTRAS</b></span>"),
+        showarrow=False, align="left",
+    )
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=x_leg, y=y_base - (2 * dy),
+        text=(f"<span style='color:{cor_tot};font-size:16px'>■</span> "
+              f"<span style='color:white;font-size:14px'><b>TOTAL</b></span>"),
+        showarrow=False, align="left",
+    )
 
-                    # -----------------------------
-                    # Estilo padrão do projeto (sem grid / sem eixo esquerdo)
-                    # -----------------------------
-                    fig = _style_clean(fig)
+    # ---------------------------
+    # QUADRO DE TOTAIS À DIREITA
+    # ---------------------------
+    total_x = int(tab[f"DEMANDA X: {dem_x}"].sum())
+    total_o = int(tab["OUTRAS DEMANDAS"].sum())
+    total_g = int(tab["TOTAL"].sum())
 
-                    # legenda embaixo (padrão)
-                    fig = _legend_bottom(fig, y=-0.22)
+    # === AJUSTE FINO DO QUADRO (IMPORTANTE) ===
+    BOX_X = 1.10  # (->) maior = mais DIREITA | menor = mais ESQUERDA
+    BOX_Y = 0.55  # (^) maior = mais CIMA    | menor = mais BAIXO
 
-                    # margens (se precisar espaço p/ rótulos)
-                    fig.update_layout(
-                        margin=dict(l=10, r=10, t=30, b=90),
-                        bargap=0.20,
-                        bargroupgap=0.10
-                    )
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=BOX_X, y=BOX_Y,
+        text=(
+            f"<span style='font-size:12px;color:{cor_tot}'><b>TOTAL</b></span><br>"
+            f"<span style='font-size:18px;color:{cor_tot}'><b>{_fmt_int(total_g)}</b></span><br><br>"
+            f"<span style='font-size:12px;color:{cor_x}'><b>DEMANDA X</b></span><br>"
+            f"<span style='font-size:16px;color:{cor_x}'><b>{_fmt_int(total_x)}</b></span><br><br>"
+            f"<span style='font-size:12px;color:{cor_out}'><b>OUTRAS</b></span><br>"
+            f"<span style='font-size:16px;color:{cor_out}'><b>{_fmt_int(total_o)}</b></span>"
+        ),
+        showarrow=False,
+        align="left",
+        bgcolor="rgba(0,0,0,0.45)",
+        bordercolor=cor_tot,
+        borderwidth=1,
+        borderpad=10,
+    )
 
-                    # -----------------------------
-                    # Rotação do rótulo da UF (se ficar apertado)
-                    # -----------------------------
-                    fig.update_xaxes(tickangle=-25)
+    # tabela final para o st.dataframe
+    tabela_final = tab[[col_uf, f"DEMANDA X: {dem_x}", "OUTRAS DEMANDAS", "TOTAL"]].copy()
+    tabela_final = tabela_final.rename(columns={f"DEMANDA X: {dem_x}": f"DEMANDA X ({dem_x})"})
 
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    # (Opcional) tabela-resumo
-                    show_tbl = st.checkbox("Mostrar tabela (UF)", value=False, key="demanda_uf_tbl")
-                    if show_tbl:
-                        out = piv.copy()
-                        out.rename(columns={grupos_ordem[0]: "QTD_X", grupos_ordem[1]: "QTD_OUTRAS"}, inplace=True)
-                        out["%X_na_UF"] = out["PCT_X"]
-                        st.dataframe(out[[COL_UF_LOCAL, "QTD_X", "QTD_OUTRAS", "TOTAL_UF", "%X_na_UF"]], hide_index=True, use_container_width=True)
-
+    return fig, tabela_final
 
 
 
