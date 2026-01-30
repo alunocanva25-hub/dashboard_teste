@@ -2061,11 +2061,9 @@ with tab_dist_mes:
 
 # ======================================================
 # 🧾 DEMANDA x DEMANDAS (UF) — DEMANDA ESCOLHIDA vs OUTRAS
-# - NÃO depende de COL_DEMANDA global (evita NameError)
-# - acha colunas automaticamente
-# - % no gráfico
-# - QTD na tabela embaixo (no próprio gráfico)
-# - quadro na direita (DEMANDA X / OUTRAS / TOTAL)
+# - % em cima para OS DOIS GRUPOS (DEMANDA e OUTRAS)
+# - tabela embaixo com ajuste de posição (não fica "muito pra esquerda")
+# - "DEMANDA X" agora vira o NOME da demanda escolhida
 # ======================================================
 
 import pandas as pd
@@ -2079,22 +2077,19 @@ def _safe_achar_coluna(df: pd.DataFrame, candidatos):
     Usa achar_coluna() se existir no seu script.
     Se não existir, faz fallback procurando por nome parecido.
     """
-    # 1) se você tem achar_coluna no projeto:
     if "achar_coluna" in globals() and callable(globals()["achar_coluna"]):
         try:
             return achar_coluna(df, candidatos)
         except Exception:
             pass
 
-    # 2) fallback simples
     cols = list(df.columns)
-    up = {c.upper().strip(): c for c in cols}
+    up = {str(c).upper().strip(): c for c in cols}
     for cand in candidatos:
         k = str(cand).upper().strip()
         if k in up:
             return up[k]
 
-    # 3) fallback por "contém"
     for c in cols:
         cu = str(c).upper()
         for cand in candidatos:
@@ -2110,9 +2105,9 @@ def demanda_x_demandas_uf_build(
     demanda_x: str,
     col_tipo: str = None,
     filtro_tipo: str = None,  # "Apenas AM" | "Apenas AS" | "AM + AS (todas)"
-    cor_x: str = "#2ecc71",   # DEMANDA X (verde)
-    cor_out: str = "#ff7f0e", # OUTRAS (laranja)
-    cor_tot: str = "#fcba03", # TOTAL (amarelo)
+    cor_dem: str = "#2ecc71", # DEMANDA escolhida
+    cor_out: str = "#ff7f0e", # OUTRAS
+    cor_tot: str = "#fcba03", # TOTAL
 ):
     if df_base is None or df_base.empty:
         return None, None, "Base vazia (df_base)."
@@ -2129,7 +2124,7 @@ def demanda_x_demandas_uf_build(
 
     base[col_uf] = base[col_uf].astype(str).str.upper().str.strip()
     base[col_demanda] = base[col_demanda].astype(str).str.upper().str.strip()
-    dem_x = str(demanda_x).upper().strip()
+    dem = str(demanda_x).upper().strip()  # demanda escolhida (nome real)
 
     # filtro AM/AS (somente aqui)
     if col_tipo and (col_tipo in base.columns) and filtro_tipo:
@@ -2138,16 +2133,17 @@ def demanda_x_demandas_uf_build(
             base = base[tipo.str.contains(r"\bAM\b", na=False)].copy()
         elif filtro_tipo == "Apenas AS":
             base = base[tipo.str.contains(r"\bAS\b", na=False)].copy()
-        else:
-            pass
 
     if base.empty:
         return None, None, "Sem dados após filtro AM/AS."
 
-    grupo_x = f"DEMANDA X: {dem_x}"
-    base["GRUPO"] = "OUTRAS DEMANDAS"
-    base.loc[base[col_demanda] == dem_x, "GRUPO"] = grupo_x
-    grupos = [grupo_x, "OUTRAS DEMANDAS"]
+    # ✅ agora o grupo recebe o NOME DA DEMANDA (não 'DEMANDA X')
+    grupo_dem = dem
+    grupo_out = "OUTRAS DEMANDAS"
+    grupos = [grupo_dem, grupo_out]
+
+    base["GRUPO"] = grupo_out
+    base.loc[base[col_demanda] == dem, "GRUPO"] = grupo_dem
 
     raw = base.groupby([col_uf, "GRUPO"]).size().reset_index(name="QTD")
     ufs = sorted(base[col_uf].dropna().unique().tolist())
@@ -2163,24 +2159,23 @@ def demanda_x_demandas_uf_build(
     dados = grid.merge(raw, on=[col_uf, "GRUPO"], how="left").fillna({"QTD": 0})
     dados["QTD"] = dados["QTD"].astype(int)
 
-    # % por UF (participação dentro da UF)
+    # % por UF (participação dentro da UF) — ✅ PARA OS DOIS GRUPOS
     total_uf = dados.groupby(col_uf)["QTD"].transform("sum").replace(0, 1)
     dados["PCT"] = ((dados["QTD"] / total_uf) * 100).round(0).astype(int)
 
-    # mostra % apenas em DEMANDA X (fica limpo)
-    dados["LABEL"] = ""
-    dados.loc[dados["GRUPO"] == grupo_x, "LABEL"] = dados.loc[dados["GRUPO"] == grupo_x, "PCT"].astype(str) + "%"
+    # ✅ mostra % em cima para os DOIS grupos
+    dados["LABEL"] = dados.apply(lambda r: "" if int(r["QTD"]) == 0 else f'{int(r["PCT"])}%', axis=1)
 
-    # tabela base (X / OUTRAS / TOTAL)
+    # tabela base (DEMANDA / OUTRAS / TOTAL)
     tab = (
         dados.pivot_table(index=col_uf, columns="GRUPO", values="QTD", aggfunc="sum", fill_value=0)
         .reset_index()
     )
-    if grupo_x not in tab.columns:
-        tab[grupo_x] = 0
-    if "OUTRAS DEMANDAS" not in tab.columns:
-        tab["OUTRAS DEMANDAS"] = 0
-    tab["TOTAL"] = tab[grupo_x] + tab["OUTRAS DEMANDAS"]
+    if grupo_dem not in tab.columns:
+        tab[grupo_dem] = 0
+    if grupo_out not in tab.columns:
+        tab[grupo_out] = 0
+    tab["TOTAL"] = tab[grupo_dem] + tab[grupo_out]
 
     # gráfico
     fig = px.bar(
@@ -2192,13 +2187,15 @@ def demanda_x_demandas_uf_build(
         text="LABEL",
         template="plotly_dark",
         category_orders={"GRUPO": grupos, col_uf: ufs},
-        color_discrete_map={grupo_x: cor_x, "OUTRAS DEMANDAS": cor_out},
+        color_discrete_map={grupo_dem: cor_dem, grupo_out: cor_out},
     )
+
+    # % em cima
     fig.update_traces(textposition="outside", cliponaxis=False)
     fig.update_yaxes(visible=False, showgrid=False, zeroline=False, showticklabels=False, title_text="")
     fig.update_xaxes(showgrid=False, ticks="", title_text="")
 
-    # ✅ margens seguras (não some)
+    # margens seguras (não some)
     fig.update_layout(
         height=560,
         showlegend=False,
@@ -2207,37 +2204,60 @@ def demanda_x_demandas_uf_build(
         plot_bgcolor="rgba(0,0,0,0)",
     )
 
-    # “tabela” embaixo
+    # ======================================================
+    # “TABELA” EMBAIXO (valores) — ajuste de posição
+    # ======================================================
     TBL_Y_BASE = -0.18   # ↑ menos negativo = sobe | ↓ mais negativo = desce
     TBL_DY     = 0.055
 
+    # ✅ AJUSTE PARA DIREITA/ESQUERDA (IMPORTANTE)
+    # - aumenta -> leva a tabela MAIS PARA A DIREITA
+    # - diminui -> leva a tabela MAIS PARA A ESQUERDA
+    TBL_X_SHIFT = 0.10   # <<<<<< AQUI (ex: 0.10 / 0.15 / 0.20)
+
+    # linhas da “tabela”
     for k in range(3):
         y_line = TBL_Y_BASE - (k * TBL_DY)
         fig.add_shape(
             type="line", xref="paper", yref="paper",
-            x0=0.0, x1=1.0, y0=y_line, y1=y_line,
+            x0=0.0 + TBL_X_SHIFT, x1=1.0 + TBL_X_SHIFT,
+            y0=y_line, y1=y_line,
             line=dict(color="rgba(255,255,255,0.22)", width=1)
         )
 
+    # números por UF
     for _, r in tab.iterrows():
         uf = r[col_uf]
-        vx = _fmt_int(r[grupo_x])
-        vo = _fmt_int(r["OUTRAS DEMANDAS"])
-        vt = _fmt_int(r["TOTAL"])
+        v_dem = _fmt_int(r[grupo_dem])
+        v_out = _fmt_int(r[grupo_out])
+        v_tot = _fmt_int(r["TOTAL"])
 
-        fig.add_annotation(x=uf, xref="x", yref="paper", y=TBL_Y_BASE,
-                           text=f"<span style='font-family:monospace;color:{cor_x};font-size:14px'><b>{vx}</b></span>",
-                           showarrow=False, align="center")
-        fig.add_annotation(x=uf, xref="x", yref="paper", y=TBL_Y_BASE - TBL_DY,
-                           text=f"<span style='font-family:monospace;color:{cor_out};font-size:14px'><b>{vo}</b></span>",
-                           showarrow=False, align="center")
-        fig.add_annotation(x=uf, xref="x", yref="paper", y=TBL_Y_BASE - (2 * TBL_DY),
-                           text=f"<span style='font-family:monospace;color:{cor_tot};font-size:14px'><b>{vt}</b></span>",
-                           showarrow=False, align="center")
+        fig.add_annotation(
+            x=uf, xref="x",
+            yref="paper", y=TBL_Y_BASE,
+            xshift=int(TBL_X_SHIFT * 100),  # move as células da tabela
+            text=f"<span style='font-family:monospace;color:{cor_dem};font-size:14px'><b>{v_dem}</b></span>",
+            showarrow=False, align="center"
+        )
+        fig.add_annotation(
+            x=uf, xref="x",
+            yref="paper", y=TBL_Y_BASE - TBL_DY,
+            xshift=int(TBL_X_SHIFT * 100),
+            text=f"<span style='font-family:monospace;color:{cor_out};font-size:14px'><b>{v_out}</b></span>",
+            showarrow=False, align="center"
+        )
+        fig.add_annotation(
+            x=uf, xref="x",
+            yref="paper", y=TBL_Y_BASE - (2 * TBL_DY),
+            xshift=int(TBL_X_SHIFT * 100),
+            text=f"<span style='font-family:monospace;color:{cor_tot};font-size:14px'><b>{v_tot}</b></span>",
+            showarrow=False, align="center"
+        )
 
-    LEG_X = -0.06
+    # legenda esquerda da tabela
+    LEG_X = -0.06 + TBL_X_SHIFT
     fig.add_annotation(xref="paper", yref="paper", x=LEG_X, y=TBL_Y_BASE,
-                       text=f"<span style='color:{cor_x};font-size:16px'>■</span> <b>DEMANDA X</b>",
+                       text=f"<span style='color:{cor_dem};font-size:16px'>■</span> <b>{grupo_dem}</b>",
                        showarrow=False, align="left")
     fig.add_annotation(xref="paper", yref="paper", x=LEG_X, y=TBL_Y_BASE - TBL_DY,
                        text=f"<span style='color:{cor_out};font-size:16px'>■</span> <b>OUTRAS</b>",
@@ -2247,9 +2267,9 @@ def demanda_x_demandas_uf_build(
                        showarrow=False, align="left")
 
     # quadro da direita (totais)
-    total_x = int(tab[grupo_x].sum())
-    total_o = int(tab["OUTRAS DEMANDAS"].sum())
-    total_g = int(tab["TOTAL"].sum())
+    total_dem = int(tab[grupo_dem].sum())
+    total_out = int(tab[grupo_out].sum())
+    total_g   = int(tab["TOTAL"].sum())
 
     # mover quadro:
     BOX_X = 1.10  # -> maior = direita | menor = esquerda
@@ -2267,24 +2287,23 @@ def demanda_x_demandas_uf_build(
         text=(
             f"<span style='color:{cor_tot};font-size:12px'><b>TOTAL</b></span><br>"
             f"<span style='color:{cor_tot};font-size:18px'><b>{_fmt_int(total_g)}</b></span><br><br>"
-            f"<span style='color:{cor_x};font-size:12px'><b>DEMANDA X</b></span><br>"
-            f"<span style='color:{cor_x};font-size:16px'><b>{_fmt_int(total_x)}</b></span><br><br>"
+            f"<span style='color:{cor_dem};font-size:12px'><b>{grupo_dem}</b></span><br>"
+            f"<span style='color:{cor_dem};font-size:16px'><b>{_fmt_int(total_dem)}</b></span><br><br>"
             f"<span style='color:{cor_out};font-size:12px'><b>OUTRAS</b></span><br>"
-            f"<span style='color:{cor_out};font-size:16px'><b>{_fmt_int(total_o)}</b></span>"
+            f"<span style='color:{cor_out};font-size:16px'><b>{_fmt_int(total_out)}</b></span>"
         ),
     )
 
-    tabela_final = tab[[col_uf, grupo_x, "OUTRAS DEMANDAS", "TOTAL"]].copy()
-    tabela_final = tabela_final.rename(columns={grupo_x: f"DEMANDA X ({dem_x})"})
+    tabela_final = tab[[col_uf, grupo_dem, grupo_out, "TOTAL"]].copy()
+    tabela_final = tabela_final.rename(columns={grupo_dem: f"{grupo_dem}", grupo_out: "OUTRAS DEMANDAS"})
     return fig, tabela_final, None
 
 
 # ======================================================
 # ✅ ABA: Demanda x Demandas (UF) — BLOCO COMPLETO
 # ======================================================
-st.subheader("🧾 Demanda x Demandas (UF) — DEMANDA X vs OUTRAS")
+st.subheader("🧾 Demanda x Demandas (UF) — Demanda escolhida vs Outras")
 
-# 1) Filtro AM/AS só aqui
 opt_tipo_uf = st.radio(
     "Tipo de nota (somente neste relatório)",
     options=["Apenas AM", "Apenas AS", "AM + AS (todas)"],
@@ -2293,7 +2312,6 @@ opt_tipo_uf = st.radio(
     key="demanda_uf_tipo_filtro"
 )
 
-# 2) Achar colunas com segurança (sem depender de COL_DEMANDA global)
 COL_DEMANDA_LOCAL = _safe_achar_coluna(df_periodo, ["DEMANDA SOLICITADA", "DEMANDA_SOLICITADA", "DEMANDA"])
 COL_UF_LOCAL      = _safe_achar_coluna(df_periodo, ["UF", "ESTADO", "LOCALIDADE"])
 COL_TIPO_LOCAL    = _safe_achar_coluna(df_periodo, ["TIPO", "TIPO NOTA", "TIPO_DE_NOTA"])
@@ -2310,7 +2328,7 @@ else:
     if not demandas_disp:
         st.info("Sem demandas para listar no período.")
     else:
-        dem_x = st.selectbox("Escolha a demanda (X)", demandas_disp, index=0, key="demanda_uf_x")
+        dem_x = st.selectbox("Escolha a demanda", demandas_disp, index=0, key="demanda_uf_x")
 
         fig, tabela, err = demanda_x_demandas_uf_build(
             df_base=df_periodo,
@@ -2319,7 +2337,7 @@ else:
             demanda_x=dem_x,
             col_tipo=COL_TIPO_LOCAL,
             filtro_tipo=opt_tipo_uf,
-            cor_x="#2ecc71",
+            cor_dem="#2ecc71",
             cor_out="#ff7f0e",
             cor_tot="#fcba03",
         )
@@ -2330,7 +2348,7 @@ else:
             st.caption(f"UF: {COL_UF_LOCAL} | DEMANDA: {COL_DEMANDA_LOCAL} | TIPO: {COL_TIPO_LOCAL}")
         else:
             st.plotly_chart(fig, use_container_width=True)
-            # se quiser também mostrar tabela real, descomente:
+            # Se quiser mostrar a tabela "real" também:
             # st.dataframe(tabela, hide_index=True, use_container_width=True)
 
 
