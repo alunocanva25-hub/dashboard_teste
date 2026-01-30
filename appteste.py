@@ -2059,121 +2059,148 @@ with tab_dist_mes:
 
                         st.plotly_chart(fig, use_container_width=True)
 
- # ==================================================
-# ✅TAB 6: 🧾 DEMANDA x DEMANDAS (UF)
-# - Escolhe "DEMANDA SOLICITADA" (X) e compara vs RESTANTE por UF
-# - Filtro AM / AS só aqui
-# - QTD dentro, % em cima (por UF), legenda embaixo, quadro totais direita
-# - Sem OUTROS
+# ==================================================
+# 🧾 DEMANDA x DEMANDAS (UF) — (X vs OUTRAS DEMANDAS)
+# - Visual no estilo do "ACUMULADO MENSAL DE NOTAS AM–AS" (QTD dentro / % em cima / legenda embaixo)
+# - Cores: DEMANDA ESCOLHIDA (X) vs OUTRAS DEMANDAS (RESTANTE)
+# - Permite escolher a demanda (X) e filtrar AM/AS SOMENTE AQUI
 # ==================================================
 with tab_demanda_uf:
-    st.subheader("Demanda x Demandas (UF) — X vs Restante (por UF)")
+    st.subheader("🧾 Demanda x Demandas (UF) — (X vs Outras Demandas)")
 
-    # filtro só neste relatório
-    opt_tipo = st.radio(
-        "Tipo de nota (somente neste relatório)",
-        options=["Apenas AM", "Apenas AS", "AM + AS (todas)"],
-        index=0,
-        horizontal=True,
-        key="dem_uf_tipo_filtro"
-    )
-
+    # -----------------------------
+    # Colunas necessárias
+    # -----------------------------
+    COL_UF_LOCAL      = COL_ESTADO  # você já tem COL_ESTADO mapeado fora
     COL_DEMANDA_LOCAL = achar_coluna(df, ["DEMANDA SOLICITADA", "DEMANDA_SOLICITADA", "DEMANDA"])
-    COL_TIPO_LOCAL    = achar_coluna(df, ["TIPO", "TIPO_NOTA", "TIPO DE NOTA"])
+    COL_TIPO_LOCAL    = achar_coluna(df, ["TIPO", "TIPO NOTA", "TIPO_DE_NOTA"])  # se existir
 
-    if COL_DEMANDA_LOCAL is None:
-        st.warning("Coluna 'DEMANDA SOLICITADA' não encontrada.")
-    elif COL_ESTADO is None:
+    if not _col_ok(COL_UF_LOCAL):
         st.warning("Coluna UF/ESTADO não encontrada.")
-    elif COL_TIPO_LOCAL is None:
-        st.warning("Coluna TIPO não encontrada (preciso dela para filtrar AM/AS).")
+    elif COL_DEMANDA_LOCAL is None:
+        st.warning("Coluna 'DEMANDA SOLICITADA' não encontrada.")
     else:
+        # -----------------------------
+        # Base do período (como nos outros relatórios)
+        # -----------------------------
         base = df_periodo.copy()
+        base = base.dropna(subset=[COL_UF_LOCAL, COL_DEMANDA_LOCAL]).copy()
 
-        # garante _CLASSE_
-        if "_CLASSE_" not in base.columns:
-            base = _classificar(base)
-
-        # só duas classes (sem OUTROS)
-        base = base[base["_CLASSE_"].isin(["PROCEDENTE", "IMPROCEDENTE"])].copy()
-
-        base = base.dropna(subset=[COL_DEMANDA_LOCAL, COL_ESTADO]).copy()
         if base.empty:
             st.info("Sem dados no período.")
         else:
-            # filtro AM/AS
-            tipo = base[COL_TIPO_LOCAL].astype(str).str.upper().str.strip()
-            if opt_tipo == "Apenas AM":
-                base = base[tipo.str.contains(r"\bAM\b", na=False)].copy()
-            elif opt_tipo == "Apenas AS":
-                base = base[tipo.str.contains(r"\bAS\b", na=False)].copy()
+            # Normalização
+            base[COL_UF_LOCAL] = _norm(base[COL_UF_LOCAL])
+            base["_DEMANDA_"]   = _norm(base[COL_DEMANDA_LOCAL])
+
+            # -----------------------------
+            # Filtro AM / AS (SÓ AQUI)
+            # -----------------------------
+            if COL_TIPO_LOCAL is not None and _col_ok(COL_TIPO_LOCAL):
+                opt_tipo = st.radio(
+                    "Tipo de nota (somente neste relatório)",
+                    options=["AM + AS (todas)", "Apenas AM", "Apenas AS"],
+                    index=0,
+                    horizontal=True,
+                    key="demanda_uf_tipo"
+                )
+
+                tipo = base[COL_TIPO_LOCAL].astype(str).str.upper().str.strip()
+                if opt_tipo == "Apenas AM":
+                    base = base[tipo.str.contains(r"\bAM\b", na=False)].copy()
+                elif opt_tipo == "Apenas AS":
+                    base = base[tipo.str.contains(r"\bAS\b", na=False)].copy()
 
             if base.empty:
-                st.info("Sem dados para o filtro escolhido (AM/AS) neste período.")
+                st.info("Sem dados após o filtro AM/AS.")
             else:
-                base["UF"] = base[COL_ESTADO].astype(str).str.upper().str.strip()
-                base["DEMANDA"] = base[COL_DEMANDA_LOCAL].astype(str).str.upper().str.strip()
-
-                demandas_disp = sorted(base["DEMANDA"].dropna().unique().tolist())
-                if not demandas_disp:
+                # -----------------------------
+                # Escolha da Demanda X
+                # -----------------------------
+                demandas = sorted(base["_DEMANDA_"].dropna().unique().tolist())
+                if not demandas:
                     st.info("Sem demandas válidas para comparar.")
                 else:
-                    dem_x = st.selectbox(
-                        "Escolha a demanda (X)",
-                        demandas_disp,
-                        index=0,
-                        key="dem_uf_x"
-                    )
+                    dem_x = st.selectbox("Escolha a demanda (X)", demandas, index=0, key="demanda_uf_x")
 
+                    # -----------------------------
+                    # Agrupa: X vs RESTANTE por UF
+                    # -----------------------------
                     base["GRUPO"] = "OUTRAS DEMANDAS"
-                    base.loc[base["DEMANDA"] == dem_x, "GRUPO"] = f"X: {dem_x}"
+                    base.loc[base["_DEMANDA_"] == dem_x, "GRUPO"] = f"DEMANDA X: {dem_x}"
 
-                    grupos = [f"X: {dem_x}", "OUTRAS DEMANDAS"]
-                    classes = ["PROCEDENTE", "IMPROCEDENTE"]
-
+                    # Tabela UF x GRUPO
                     tab = (
-                        base.groupby(["UF", "GRUPO", "_CLASSE_"])
-                        .size()
-                        .reset_index(name="QTD")
+                        base.groupby([COL_UF_LOCAL, "GRUPO"])
+                            .size()
+                            .reset_index(name="QTD")
                     )
 
-                    # garante grid completo (UF x GRUPO x CLASSE)
-                    ufs = sorted(base["UF"].dropna().unique().tolist())
+                    # Garante que todo UF tenha as 2 colunas
+                    grupos_ordem = [f"DEMANDA X: {dem_x}", "OUTRAS DEMANDAS"]
+                    ufs_ordem = (
+                        base.groupby(COL_UF_LOCAL).size().sort_values(ascending=False).index.tolist()
+                    )
+
                     grid = (
-                        pd.DataFrame({"UF": ufs}).assign(_k=1)
-                        .merge(pd.DataFrame({"GRUPO": grupos}).assign(_k=1), on="_k")
-                        .merge(pd.DataFrame({"_CLASSE_": classes}).assign(_k=1), on="_k")
-                        .drop(columns="_k")
+                        pd.DataFrame({COL_UF_LOCAL: ufs_ordem}).assign(_k=1)
+                          .merge(pd.DataFrame({"GRUPO": grupos_ordem}).assign(_k=1), on="_k")
+                          .drop(columns="_k")
                     )
+
                     tab = (
-                        grid.merge(tab, on=["UF", "GRUPO", "_CLASSE_"], how="left")
-                        .fillna({"QTD": 0})
+                        grid.merge(tab, on=[COL_UF_LOCAL, "GRUPO"], how="left")
+                            .fillna({"QTD": 0})
                     )
                     tab["QTD"] = tab["QTD"].astype(int)
+
+                    # -----------------------------
+                    # Percentual por UF (participação do X no total da UF)
+                    # -----------------------------
+                    piv = tab.pivot_table(index=COL_UF_LOCAL, columns="GRUPO", values="QTD", aggfunc="sum", fill_value=0).reset_index()
+                    for g in grupos_ordem:
+                        if g not in piv.columns:
+                            piv[g] = 0
+
+                    piv["TOTAL_UF"] = piv[grupos_ordem[0]] + piv[grupos_ordem[1]]
+                    den = piv["TOTAL_UF"].replace(0, 1)
+
+                    # % que queremos exibir em cima do “bloco” (UF) — % do X na UF
+                    piv["PCT_X"] = (piv[grupos_ordem[0]] / den * 100).round(1)
+
+                    # Junta de volta pra usar no plot (sem bagunçar)
+                    tab = tab.merge(piv[[COL_UF_LOCAL, "TOTAL_UF", "PCT_X"]], on=COL_UF_LOCAL, how="left")
+
+                    # -----------------------------
+                    # Textos
+                    # -----------------------------
                     tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
 
-                    # total por UF e por grupo (para % em cima)
-                    tot_uf_grupo = tab.groupby(["UF", "GRUPO"])["QTD"].sum().reset_index(name="TOTAL_GRUPO")
-                    tot_uf = tot_uf_grupo.groupby("UF")["TOTAL_GRUPO"].sum().reset_index(name="TOTAL_UF")
-                    tot_uf_grupo = tot_uf_grupo.merge(tot_uf, on="UF", how="left")
-                    tot_uf_grupo["PCT_NO_UF"] = (tot_uf_grupo["TOTAL_GRUPO"] / tot_uf_grupo["TOTAL_UF"].replace(0, 1) * 100).round(1)
+                    # -----------------------------
+                    # Cores (estilo "Acumulado Mensal")
+                    # (ajuste se quiser)
+                    # -----------------------------
+                    COR_X   = "#1f77b4"  # cor da DEMANDA X (azul)
+                    COR_OUT = "#ff7f0e"  # cor das OUTRAS DEMANDAS (laranja)
 
+                    # -----------------------------
+                    # Gráfico (barras agrupadas)
+                    # -----------------------------
                     fig = px.bar(
                         tab,
-                        x="UF",
+                        x=COL_UF_LOCAL,
                         y="QTD",
-                        color="_CLASSE_",
-                        barmode="stack",
-                        facet_col="GRUPO",
+                        color="GRUPO",
+                        barmode="group",
                         template="plotly_dark",
-                        category_orders={"GRUPO": grupos, "_CLASSE_": classes},
+                        category_orders={COL_UF_LOCAL: ufs_ordem, "GRUPO": grupos_ordem},
                         color_discrete_map={
-                            "PROCEDENTE": COR_PROC,
-                            "IMPROCEDENTE": COR_IMP,
-                        }
+                            grupos_ordem[0]: COR_X,
+                            grupos_ordem[1]: COR_OUT,
+                        },
                     )
 
-                    # QTD dentro
+                    # QTD dentro (como no acumulado)
                     fig.update_traces(
                         text=tab["TXT_QTD"],
                         textposition="inside",
@@ -2181,86 +2208,63 @@ with tab_demanda_uf:
                         cliponaxis=False
                     )
 
-                    # limpa eixos e grades
-                    fig.for_each_xaxis(lambda a: a.update(showgrid=False, ticks="", showticklabels=True))
-                    fig.for_each_yaxis(lambda a: a.update(visible=False, showticklabels=False, showgrid=False, zeroline=False))
+                    # -----------------------------
+                    # % em cima do "bloco" da UF (mostrar uma vez por UF)
+                    # - posição: acima do maior valor da UF
+                    # -----------------------------
+                    # pega o maior valor por UF, para posicionar a % acima
+                    max_uf = (
+                        tab.groupby(COL_UF_LOCAL)["QTD"].max()
+                           .reindex(ufs_ordem)
+                           .fillna(0)
+                           .astype(int)
+                    )
+                    # ajuste fino da altura do texto (%)
+                    # -> aumente para ficar mais alto
+                    PCT_PAD_FACTOR = 0.12
+                    pad = (max_uf.max() if max_uf.max() > 0 else 1) * PCT_PAD_FACTOR
 
-                    # % em cima (por UF) — em cada facet (X e Outras)
-                    # Calcula um "pad" com base no maior total do UF
-                    y_max = int(tot_uf_grupo["TOTAL_GRUPO"].max()) if int(tot_uf_grupo["TOTAL_GRUPO"].max()) > 0 else 1
-                    pad = y_max * 0.10
+                    fig.add_scatter(
+                        x=piv[COL_UF_LOCAL],
+                        y=max_uf.values.astype(float) + pad,
+                        mode="text",
+                        text=[("" if int(t) == 0 else f"{p:.1f}%") for t, p in zip(piv["TOTAL_UF"], piv["PCT_X"])],
+                        textposition="middle center",
+                        showlegend=False,
+                        textfont=dict(size=12, family="Arial Black", color="white"),
+                        hoverinfo="skip",
+                    )
 
-                    for g in grupos:
-                        rec = tot_uf_grupo[tot_uf_grupo["GRUPO"] == g].copy()
-                        fig.add_scatter(
-                            x=rec["UF"],
-                            y=rec["TOTAL_GRUPO"].astype(float) + pad,
-                            mode="text",
-                            text=[f"{p:.1f}%" for p in rec["PCT_NO_UF"]],
-                            textposition="middle center",
-                            showlegend=False,
-                            hoverinfo="skip",
-                            textfont=dict(size=12, family="Arial Black", color="white"),
-                            xaxis="x" if g == grupos[0] else "x2",
-                            yaxis="y" if g == grupos[0] else "y2",
-                        )
+                    # -----------------------------
+                    # Estilo padrão do projeto (sem grid / sem eixo esquerdo)
+                    # -----------------------------
+                    fig = _style_clean(fig)
 
-                    # legenda embaixo
+                    # legenda embaixo (padrão)
+                    fig = _legend_bottom(fig, y=-0.22)
+
+                    # margens (se precisar espaço p/ rótulos)
                     fig.update_layout(
-                        legend=dict(
-                            orientation="h",
-                            yanchor="top",
-                            y=-0.22,
-                            xanchor="left",
-                            x=0.0,
-                            title_text=""
-                        ),
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        margin=dict(l=10, r=240, t=60, b=95),
+                        margin=dict(l=10, r=10, t=30, b=90),
+                        bargap=0.20,
+                        bargroupgap=0.10
                     )
 
-                    # quadro totais (direita)
-                    # === AJUSTE FINO DO QUADRO ===
-                    BOX_X = 1.18  # maior -> mais DIREITA | menor -> mais ESQUERDA
-                    BOX_Y = 0.59  # maior -> mais CIMA    | menor -> mais BAIXO
-
-                    proc_total   = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
-                    improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
-                    total_all    = proc_total + improc_total
-
-                    def _fmt(v): return f"{int(v):,}".replace(",", ".")
-
-                    fig.add_annotation(
-                        xref="paper", yref="paper",
-                        x=BOX_X, y=BOX_Y,
-                        xanchor="right", yanchor="top",
-                        showarrow=False, align="left",
-                        bgcolor="rgba(0,0,0,0.45)",
-                        bordercolor="rgba(255,255,255,0.25)",
-                        borderwidth=1,
-                        borderpad=10,
-                        text=(
-                            f"<span style='color:{COR_PROC};font-size:13px'><b>■ PROCEDENTE</b></span><br>"
-                            f"<span style='color:white;font-size:18px'><b>{_fmt(proc_total)}</b></span><br><br>"
-                            f"<span style='color:{COR_IMP};font-size:13px'><b>■ IMPROCEDENTE</b></span><br>"
-                            f"<span style='color:white;font-size:18px'><b>{_fmt(improc_total)}</b></span><br><br>"
-                            f"<span style='color:#fcba03;font-size:13px'><b>TOTAL</b></span><br>"
-                            f"<span style='color:#fcba03;font-size:20px'><b>{_fmt(total_all)}</b></span>"
-                        )
-                    )
-
-                    # Ajusta títulos dos facets (GRUPO=...)
-                    # Se estiver encostando, mexa no SHIFT
-                    FACET_Y_SHIFT = 0.04  # ↑ sobe | ↓ desce
-                    for ann in fig.layout.annotations:
-                        if ann.text and "=" in ann.text:
-                            ann.text = ann.text.split("=", 1)[1].strip()
-                            ann.y = min(1.0, (ann.y or 0) + FACET_Y_SHIFT)
-                            ann.yanchor = "bottom"
-                            ann.xanchor = "center"
-                            ann.font = dict(size=13, color="white", family="Arial Black")
+                    # -----------------------------
+                    # Rotação do rótulo da UF (se ficar apertado)
+                    # -----------------------------
+                    fig.update_xaxes(tickangle=-25)
 
                     st.plotly_chart(fig, use_container_width=True)
+
+                    # (Opcional) tabela-resumo
+                    show_tbl = st.checkbox("Mostrar tabela (UF)", value=False, key="demanda_uf_tbl")
+                    if show_tbl:
+                        out = piv.copy()
+                        out.rename(columns={grupos_ordem[0]: "QTD_X", grupos_ordem[1]: "QTD_OUTRAS"}, inplace=True)
+                        out["%X_na_UF"] = out["PCT_X"]
+                        st.dataframe(out[[COL_UF_LOCAL, "QTD_X", "QTD_OUTRAS", "TOTAL_UF", "%X_na_UF"]], hide_index=True, use_container_width=True)
+
 
 
 
