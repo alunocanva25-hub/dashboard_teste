@@ -1593,7 +1593,7 @@ if st.session_state.show_relatorios:
 # ==================================================
 # 📅 COMPARATIVO ANUAL — (CORRIGIDO)
 # ==================================================
-with tab_ano:
+    with tab_ano:
         st.subheader("Comparativo Anual — Procedente x Improcedente")
 
         if not _col_ok(COL_DATA):
@@ -1682,11 +1682,9 @@ with tab_ano:
                         textfont=dict(size=11, family="Arial Black", color="white"),
                     )
                     for tr in fig_pct.data:
-    # garante que a % fique alinhada com a barra correta
-                   tr.offsetgroup = tr.name   # PROCEDENTE / IMPROCEDENTE
-                   fig.add_trace(tr)
-
-
+                        fig.add_trace(tr) # garante que a % fique alinhada com a barra correta
+                    tr.offsetgroup = tr.name   # PROCEDENTE / IMPROCEDENTE
+                    fig.add_trace(tr)
                     fig = _style_clean(fig)
                     fig = _legend_bottom(fig, y=-0.22)
                     fig.update_layout(margin=dict(l=10, r=220, t=30, b=80))
