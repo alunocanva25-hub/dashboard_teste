@@ -1682,7 +1682,10 @@ with tab_ano:
                         textfont=dict(size=11, family="Arial Black", color="white"),
                     )
                     for tr in fig_pct.data:
-                        fig.add_trace(tr)
+    # garante que a % fique alinhada com a barra correta
+                   tr.offsetgroup = tr.name   # PROCEDENTE / IMPROCEDENTE
+                   fig.add_trace(tr)
+
 
                     fig = _style_clean(fig)
                     fig = _legend_bottom(fig, y=-0.22)
