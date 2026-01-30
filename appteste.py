@@ -1924,7 +1924,7 @@ with tab_dist_mes:
                 # ✅ AJUSTE DOS TÍTULOS (ESTADOS) — NÃO ATRAPALHA MESES
                 # ==================================================
                 # COMO AJUSTAR (se precisar):
-                TIT_Y_SHIFT = 0.02   # ↑ aumenta -> sobe o título | ↓ diminui -> desce o título
+                TIT_Y_SHIFT = 0.40   # ↑ aumenta -> sobe o título | ↓ diminui -> desce o título
                 TIT_FONTSZ  = 13     # tamanho fonte do estado
 
                 for ann in fig.layout.annotations:
