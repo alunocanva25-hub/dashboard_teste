@@ -2255,7 +2255,7 @@ def demanda_x_demandas_uf_build(
         )
 
     # legenda esquerda da tabela
-    LEG_X = -0.14 + TBL_X_SHIFT
+    LEG_X = -0.11 + TBL_X_SHIFT
     fig.add_annotation(xref="paper", yref="paper", x=LEG_X, y=TBL_Y_BASE,
                        text=f"<span style='color:{cor_dem};font-size:16px'>■</span> <b>{grupo_dem}</b>",
                        showarrow=False, align="left")
