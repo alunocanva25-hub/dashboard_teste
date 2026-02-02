@@ -1625,9 +1625,9 @@ with tab_reg:
                     fig = _padrao_fig(
                         fig,
                         titulo=f"📍 REGIONAL — TOP {top_n}",
-                        legend_y=-0.5,
-                        margin_r=230,
-                        margin_b=95
+                        legend_y=-0.35,
+                        margin_r=240,
+                        margin_b=100
                     )
 
                     # quadro (soma do Top N)
