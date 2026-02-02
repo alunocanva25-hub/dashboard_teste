@@ -1415,13 +1415,13 @@ if st.session_state.show_relatorios:
          "📌 Demanda x Demandas (Geral)", "🧾 Demanda x Demandas (UF)"]
     )
 
-    # ==================================================
-# TAB 1 — 📍 REGIONAL (PADRÃO Demanda x Demandas (UF))
-# - SEM OUTROS
-# - QTD dentro + % em cima
-# - legenda embaixo
-# - título DENTRO do gráfico
-# - quadro de totais na direita (TOTAL/PROCEDENTE/IMPROCEDENTE)
+# ==================================================
+# TAB 1 — 📍 REGIONAL  (CORRIGIDO)
+# - ✅ Corrige texto dentro das barras (não duplica valores)
+# - ✅ Remove OUTROS definitivamente (só PROCEDENTE / IMPROCEDENTE)
+# - ✅ Título dentro do gráfico + variáveis para mover (X/Y)
+# - ✅ % em cima do total de cada regional
+# - ✅ Quadro de totais na direita (X/Y comentado)
 # ==================================================
 with tab_reg:
     st.subheader("Relatório por Regional")
@@ -1436,50 +1436,31 @@ with tab_reg:
             base[COL_REGIONAL] = _norm(base[COL_REGIONAL])
             base = _classificar(base)
 
-            # ✅ remove definitivamente OUTROS (fica só Procedente/Improcedente)
+            # === REMOVE OUTROS DEFINITIVO ===
             base = base[base["_CLASSE_"].isin(["PROCEDENTE", "IMPROCEDENTE"])].copy()
+
             if base.empty:
-                st.info("Sem dados classificados como PROCEDENTE/IMPROCEDENTE no período.")
+                st.info("Sem dados (após filtrar apenas Procedente/Improcedente).")
             else:
                 modo = st.selectbox(
                     "Modo",
-                    ["Todas (por regional)", "Uma regional (detalhe)"],
+                    ["Todas (Top N por regional)", "Uma regional (detalhe)"],
                     index=0,
                     key="rg_modo_reg"
                 )
 
-                def _add_box_pi(fig, proc, improc, total, box_x=1.18, box_y=0.98):
-                    """
-                    Quadro de totais (TOTAL / PROCEDENTE / IMPROCEDENTE)
-                    COMO MOVER:
-                      - box_x maior -> mais para DIREITA | menor -> mais para ESQUERDA
-                      - box_y maior -> mais para CIMA    | menor -> mais para BAIXO
-                    """
-                    def _fmt(v): return f"{int(v):,}".replace(",", ".")
-                    txt = (
-                        f"<span style='color:#fcba03;font-size:12px'><b>TOTAL</b></span><br>"
-                        f"<span style='color:#fcba03;font-size:20px'><b>{_fmt(total)}</b></span><br><br>"
-                        f"<span style='color:{COR_PROC};font-size:13px'><b>■ PROCEDENTE</b></span><br>"
-                        f"<span style='color:white;font-size:18px'><b>{_fmt(proc)}</b></span><br><br>"
-                        f"<span style='color:{COR_IMP};font-size:13px'><b>■ IMPROCEDENTE</b></span><br>"
-                        f"<span style='color:white;font-size:18px'><b>{_fmt(improc)}</b></span>"
-                    )
-                    fig.add_annotation(
-                        xref="paper", yref="paper",
-                        x=box_x, y=box_y,
-                        xanchor="right", yanchor="top",
-                        showarrow=False,
-                        align="left",
-                        bgcolor="rgba(0,0,0,0.45)",
-                        bordercolor="rgba(255,255,255,0.18)",
-                        borderwidth=1,
-                        borderpad=10,
-                        text=txt,
-                    )
-                    return fig
+                # ==================================================
+                # AJUSTE DO TÍTULO (DENTRO DO GRÁFICO) — REGIONAL
+                # (->) X maior = mais para direita | menor = mais para esquerda
+                # (^) Y maior = mais para cima     | menor = mais para baixo
+                # ==================================================
+                TITLE_X_REG = 0.01
+                TITLE_Y_REG = 0.98
 
-                # === POSIÇÃO DO QUADRO (REGIONAL) ===
-                BOX_X_REG = 1.18  # (->) maior = mais DIREITA | menor = mais ESQUERDA
+                # ==================================================
+                # POSIÇÃO DO QUADRO (DIREITA) — REGIONAL
+                # ==================================================
+                BOX_X_REG = 1.12  # (->) maior = mais DIREITA | menor = mais ESQUERDA
                 BOX_Y_REG = 0.98  # (^) maior = mais CIMA    | menor = mais BAIXO
 
                 if modo == "Uma regional (detalhe)":
@@ -1487,92 +1468,102 @@ with tab_reg:
                     reg_sel = st.selectbox("Regional", regs, index=0, key="rg_reg_sel")
 
                     rec = base[base[COL_REGIONAL] == reg_sel].copy()
-                    if rec.empty:
-                        st.info("Sem dados para essa regional.")
-                    else:
-                        tab = (
-                            rec.groupby("_CLASSE_")
-                            .size()
-                            .reindex(["PROCEDENTE", "IMPROCEDENTE"], fill_value=0)
-                            .reset_index(name="QTD")
-                        )
-                        total = int(tab["QTD"].sum()) or 1
-                        tab["PCT"] = (tab["QTD"] / total * 100).round(1)
 
-                        tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+                    tab = (
+                        rec.groupby("_CLASSE_")
+                        .size()
+                        .reindex(["PROCEDENTE", "IMPROCEDENTE"], fill_value=0)
+                        .reset_index(name="QTD")
+                    )
+                    total = int(tab["QTD"].sum()) or 1
+                    tab["PCT"] = (tab["QTD"] / total * 100).round(1)
 
-                        fig = px.bar(
-                            tab,
-                            x="_CLASSE_",
-                            y="QTD",
-                            color="_CLASSE_",
-                            template="plotly_dark",
-                            category_orders={"_CLASSE_": ["PROCEDENTE", "IMPROCEDENTE"]},
-                            color_discrete_map={
-                                "PROCEDENTE": COR_PROC,
-                                "IMPROCEDENTE": COR_IMP,
-                            },
-                        )
+                    tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
 
-                        # QTD dentro
-                        fig.update_traces(
-                            text=tab["TXT_QTD"],
-                            textposition="inside",
-                            insidetextanchor="middle",
-                            cliponaxis=False
-                        )
+                    fig = px.bar(
+                        tab,
+                        x="_CLASSE_",
+                        y="QTD",
+                        color="_CLASSE_",
+                        text="TXT_QTD",  # ✅ texto correto por linha
+                        template="plotly_dark",
+                        color_discrete_map={
+                            "PROCEDENTE": COR_PROC,
+                            "IMPROCEDENTE": COR_IMP,
+                        },
+                        category_orders={"_CLASSE_": ["PROCEDENTE", "IMPROCEDENTE"]}
+                    )
+                    fig.update_traces(
+                        textposition="inside",
+                        insidetextanchor="middle",
+                        cliponaxis=False
+                    )
 
-                        # % em cima (acima de cada barra)
-                        y_max = int(tab["QTD"].max()) if int(tab["QTD"].max()) > 0 else 1
-                        pad = y_max * 0.10
-                        fig.add_scatter(
-                            x=tab["_CLASSE_"],
-                            y=tab["QTD"].astype(float) + pad,
-                            mode="text",
-                            text=[("" if q == 0 else f"{p:.1f}%") for q, p in zip(tab["QTD"], tab["PCT"])],
-                            showlegend=False,
-                            hoverinfo="skip",
-                            textfont=dict(size=12, family="Arial Black", color="white"),
-                        )
+                    # % em cima (alinhada ao bloco)
+                    y_max = int(tab["QTD"].max()) if int(tab["QTD"].max()) > 0 else 1
+                    pad = y_max * 0.10
+                    fig.add_scatter(
+                        x=tab["_CLASSE_"],
+                        y=tab["QTD"].astype(float) + pad,
+                        mode="text",
+                        text=[("" if q == 0 else f"{p:.1f}%") for q, p in zip(tab["QTD"], tab["PCT"])],
+                        textposition="middle center",
+                        showlegend=False,
+                        textfont=dict(size=11, family="Arial Black", color="white"),
+                        hoverinfo="skip",
+                    )
 
-                        # ✅ padrão do visual + título dentro
-                        fig = _padrao_fig(
-                            fig,
-                            titulo=f"📍 REGIONAL — {reg_sel}",
-                            legend_y=-0.12,
-                            margin_r=230,
-                            margin_b=90
-                        )
+                    # estilo + legenda embaixo
+                    fig = _style_clean(fig)
+                    fig = _legend_bottom(fig, y=-0.22)
+                    fig.update_layout(margin=dict(l=10, r=180, t=30, b=80))
 
-                        # quadro
-                        proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
-                        improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
-                        total_geral = proc_total + improc_total
-                        fig = _add_box_pi(fig, proc_total, improc_total, total_geral, box_x=BOX_X_REG, box_y=BOX_Y_REG)
+                    # título dentro do gráfico
+                    fig.add_annotation(
+                        xref="paper", yref="paper",
+                        x=TITLE_X_REG, y=TITLE_Y_REG,
+                        xanchor="left", yanchor="top",
+                        text=f"📍 REGIONAL — {reg_sel}",
+                        showarrow=False,
+                        font=dict(size=14, family="Arial Black", color="white"),
+                        bgcolor="rgba(0,0,0,0.0)"
+                    )
 
-                        st.plotly_chart(fig, use_container_width=True)
+                    # quadro (direita) — sem OUTROS
+                    proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
+                    improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
+                    total_geral = proc_total + improc_total
 
-                        st.dataframe(
-                            tab.rename(columns={"_CLASSE_": "RESULTADO", "PCT": "%"}),
-                            hide_index=True,
-                            use_container_width=True
-                        )
+                    # se sua função _add_summary_box ainda espera 4 valores, passe 0 em "outros"
+                    fig = _add_summary_box(fig, proc_total, improc_total, 0, total_geral, box_x=BOX_X_REG, box_y=BOX_Y_REG)
+
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    st.dataframe(
+                        tab.rename(columns={"_CLASSE_": "RESULTADO", "PCT": "%"}),
+                        hide_index=True,
+                        use_container_width=True
+                    )
 
                 else:
-                    # Todas (Top N por regional)
+                    # =============================
+                    # TODAS (Top N por regional)
+                    # =============================
                     tab = (
                         base.groupby([COL_REGIONAL, "_CLASSE_"])
                         .size()
                         .unstack(fill_value=0)
                         .reset_index()
                     )
+                    # garante colunas
                     for c in ["PROCEDENTE", "IMPROCEDENTE"]:
                         if c not in tab.columns:
                             tab[c] = 0
+
                     tab["TOTAL"] = tab["PROCEDENTE"] + tab["IMPROCEDENTE"]
                     tab = tab.sort_values("TOTAL", ascending=False)
 
-                    top_n = st.slider("Top N regionais", 5, 60, 15, key="rg_reg_topn")
+                    top_n = st.slider("Top N regionais", 5, 40, 15, key="rg_reg_topn")
                     tab_top = tab.head(top_n).copy()
 
                     total_geral = int(tab_top["TOTAL"].sum()) or 1
@@ -1592,52 +1583,59 @@ with tab_reg:
                         y="QTD",
                         color="RESULTADO",
                         barmode="stack",
+                        text="TXT_QTD",  # ✅ texto correto por linha (corrige duplicação)
                         template="plotly_dark",
-                        category_orders={"RESULTADO": ["PROCEDENTE", "IMPROCEDENTE"]},
                         color_discrete_map={
                             "PROCEDENTE": COR_PROC,
                             "IMPROCEDENTE": COR_IMP,
                         },
+                        category_orders={"RESULTADO": ["PROCEDENTE", "IMPROCEDENTE"]}
                     )
-
-                    # QTD dentro
                     fig.update_traces(
-                        text=melt["TXT_QTD"],
                         textposition="inside",
                         insidetextanchor="middle",
                         cliponaxis=False
                     )
 
-                    # % em cima do TOTAL da regional
+                    # % em cima do total da regional
                     y_max = int(tab_top["TOTAL"].max()) if int(tab_top["TOTAL"].max()) > 0 else 1
-                    pad = y_max * 0.06
+                    pad = y_max * 0.04
                     fig.add_scatter(
                         x=tab_top[COL_REGIONAL],
                         y=tab_top["TOTAL"].astype(float) + pad,
                         mode="text",
                         text=[f"{p:.1f}%" for p in tab_top["PCT_TOTAL"]],
+                        textposition="middle center",
                         showlegend=False,
+                        textfont=dict(size=11, family="Arial Black", color="white"),
                         hoverinfo="skip",
-                        textfont=dict(size=12, family="Arial Black", color="white"),
                     )
 
-                    # ✅ padrão do visual + título dentro
-                    fig = _padrao_fig(
-                        fig,
-                        titulo=f"📍 REGIONAL — TOP {top_n}",
-                        legend_y=-0.35,
-                        margin_r=240,
-                        margin_b=100
+                    fig = _style_clean(fig)
+                    fig = _legend_bottom(fig, y=-0.22)
+                    fig.update_layout(margin=dict(l=10, r=180, t=30, b=80))
+
+                    # título dentro do gráfico
+                    fig.add_annotation(
+                        xref="paper", yref="paper",
+                        x=TITLE_X_REG, y=TITLE_Y_REG,
+                        xanchor="left", yanchor="top",
+                        text=f"📍 REGIONAL — TOP {top_n}",
+                        showarrow=False,
+                        font=dict(size=14, family="Arial Black", color="white"),
+                        bgcolor="rgba(0,0,0,0.0)"
                     )
 
-                    # quadro (soma do Top N)
+                    # quadro (soma do recorte Top N) — sem OUTROS
                     proc_total = int(tab_top["PROCEDENTE"].sum())
                     improc_total = int(tab_top["IMPROCEDENTE"].sum())
                     total_geral2 = proc_total + improc_total
-                    fig = _add_box_pi(fig, proc_total, improc_total, total_geral2, box_x=BOX_X_REG, box_y=BOX_Y_REG)
+
+                    fig = _add_summary_box(fig, proc_total, improc_total, 0, total_geral2, box_x=BOX_X_REG, box_y=BOX_Y_REG)
 
                     st.plotly_chart(fig, use_container_width=True)
                     st.dataframe(tab_top, hide_index=True, use_container_width=True)
+
 
 
     # ==================================================
