@@ -1539,7 +1539,7 @@ with tab_reg:
                         fig = _padrao_fig(
                             fig,
                             titulo=f"📍 REGIONAL — {reg_sel}",
-                            legend_y=-0.22,
+                            legend_y=-0.12,
                             margin_r=230,
                             margin_b=90
                         )
