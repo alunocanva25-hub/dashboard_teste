@@ -1430,7 +1430,7 @@ with tab_reg:
             st.info("Sem dados no período.")
         else:
             base[COL_REGIONAL] = _norm(base[COL_REGIONAL])
-            base = _classificar(base)  # <-- usa sua função (já corrigida p/ não confundir IMPROCEDENTE)
+            base = _classificar(base)
 
             modo = st.selectbox(
                 "Modo",
@@ -1456,15 +1456,13 @@ with tab_reg:
             # ============================
             # POSIÇÃO DO TÍTULO NO GRÁFICO
             # ============================
-            TITLE_X = 0.30     # esquerda → direita
+            TITLE_X = 0.01     # esquerda → direita
             TITLE_Y = 0.98     # baixo → cima
 
             # ==========================================================
             # ✅ ADAPTADOR "À PROVA DE ERRO" PARA _add_summary_box
-            # (porque sua função pode ter assinatura diferente)
             # ==========================================================
             def _add_box_safe(fig, proc, improc, total, box_x, box_y):
-                # tenta o formato mais completo (proc, improc, outros, total)
                 try:
                     return _add_summary_box(fig, proc, improc, 0, total, box_x=box_x, box_y=box_y)
                 except TypeError:
@@ -1473,8 +1471,6 @@ with tab_reg:
                     return _add_summary_box(fig, proc, improc, 0, total, box_x, box_y)
                 except TypeError:
                     pass
-
-                # tenta formato sem OUTROS (proc, improc, total)
                 try:
                     return _add_summary_box(fig, proc, improc, total, box_x=box_x, box_y=box_y)
                 except TypeError:
@@ -1483,8 +1479,6 @@ with tab_reg:
                     return _add_summary_box(fig, proc, improc, total, box_x, box_y)
                 except TypeError:
                     pass
-
-                # se nada bater, só devolve o gráfico sem quadro (não quebra o app)
                 return fig
 
             if modo == "Uma regional (detalhe)":
@@ -1503,6 +1497,8 @@ with tab_reg:
                 total = int(tab["QTD"].sum()) or 1
                 tab["PCT"] = (tab["QTD"] / total * 100).round(1)
 
+                tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+
                 fig = px.bar(
                     tab,
                     x="_CLASSE_",
@@ -1513,11 +1509,10 @@ with tab_reg:
                         "PROCEDENTE": COR_PROC,
                         "IMPROCEDENTE": COR_IMP,
                     },
+                    text="TXT_QTD"  # ✅ CORREÇÃO: texto por trace (não duplica)
                 )
 
-                # QTD dentro
                 fig.update_traces(
-                    text=tab["QTD"].astype(str),
                     textposition="inside",
                     insidetextanchor="middle",
                     cliponaxis=False
@@ -1554,7 +1549,6 @@ with tab_reg:
                 improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
                 total_geral = proc_total + improc_total
 
-                # ✅ QUADRO (sem quebrar)
                 fig = _add_box_safe(fig, proc_total, improc_total, total_geral, BOX_X_REG, BOX_Y_REG)
 
                 st.plotly_chart(fig, use_container_width=True)
@@ -1589,6 +1583,7 @@ with tab_reg:
                     var_name="RESULTADO",
                     value_name="QTD"
                 )
+
                 melt["TXT_QTD"] = melt["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
 
                 fig = px.bar(
@@ -1602,11 +1597,10 @@ with tab_reg:
                         "PROCEDENTE": COR_PROC,
                         "IMPROCEDENTE": COR_IMP,
                     },
+                    text="TXT_QTD"  # ✅ CORREÇÃO: texto por trace (não duplica)
                 )
 
-                # QTD dentro
                 fig.update_traces(
-                    text=melt["TXT_QTD"],
                     textposition="inside",
                     insidetextanchor="middle",
                     cliponaxis=False
@@ -1643,11 +1637,11 @@ with tab_reg:
                 improc_total = int(tab["IMPROCEDENTE"].sum())
                 total_geral2 = proc_total + improc_total
 
-                # ✅ QUADRO (sem quebrar)
                 fig = _add_box_safe(fig, proc_total, improc_total, total_geral2, BOX_X_REG, BOX_Y_REG)
 
                 st.plotly_chart(fig, use_container_width=True)
                 st.dataframe(tab, hide_index=True, use_container_width=True)
+
 
 
 
