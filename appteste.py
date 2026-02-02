@@ -1456,7 +1456,7 @@ with tab_reg:
             # ============================
             # POSIÇÃO DO TÍTULO NO GRÁFICO
             # ============================
-            TITLE_X = 0.01     # esquerda → direita
+            TITLE_X = 0.30     # esquerda → direita
             TITLE_Y = 0.98     # baixo → cima
 
             # ==========================================================
