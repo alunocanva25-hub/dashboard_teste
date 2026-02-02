@@ -1209,6 +1209,62 @@ def _plot_stack_with_pct_and_box_sem_outros(
 
     return fig
 
+def _titulo_interno(fig, titulo, x=0.01, y=0.99):
+    """
+    Título DENTRO do gráfico (topo esquerdo).
+    Como mover:
+      - x maior -> mais para DIREITA | menor -> mais para ESQUERDA
+      - y maior -> mais para CIMA    | menor -> mais para BAIXO
+    """
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=x, y=y,
+        xanchor="left", yanchor="top",
+        showarrow=False,
+        align="left",
+        text=f"<b>{titulo}</b>",
+        font=dict(size=18, family="Arial Black", color="white"),
+        bgcolor="rgba(0,0,0,0)",  # transparente
+    )
+    return fig
+
+
+def _padrao_fig(fig, titulo=None, legend_y=-0.22, margin_r=230, margin_b=90):
+    """
+    Padroniza o estilo para ficar igual ao Demanda x Demandas (UF):
+    - remove grades
+    - esconde eixo Y (sem escala)
+    - legenda embaixo (horizontal)
+    - fundo limpo
+    - margens compatíveis com quadro da direita (se existir)
+    """
+    # remove grid e “limpa”
+    fig.update_xaxes(showgrid=False, ticks="")
+    fig.update_yaxes(showgrid=False, visible=False, showticklabels=False, ticks="", zeroline=False, title_text="")
+
+    # legenda embaixo
+    fig.update_layout(
+        plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=legend_y,
+            xanchor="left",
+            x=0.0,
+            title_text="",
+            bgcolor="rgba(0,0,0,0)",
+            font=dict(size=12, color="white"),
+        ),
+        margin=dict(l=10, r=margin_r, t=30, b=margin_b),
+    )
+
+    # título dentro do gráfico (opcional)
+    if titulo:
+        fig = _titulo_interno(fig, titulo, x=0.01, y=0.99)
+
+    return fig
+
+
 # ======================================================
 # RELATÓRIOS GERENCIAIS (COMPLETO) — CORRIGIDO (6 ABAS)
 # - ✅ OUTROS removido definitivamente (não existe)
