@@ -1493,7 +1493,6 @@ with tab_reg:
 
     if not _col_ok(COL_REGIONAL):
         st.warning("Coluna REGIONAL não encontrada.")
-
     else:
         base = df_periodo.dropna(subset=[COL_REGIONAL]).copy()
 
@@ -1501,7 +1500,35 @@ with tab_reg:
             st.info("Sem dados no período.")
         else:
             base[COL_REGIONAL] = _norm(base[COL_REGIONAL])
-            base = _classificar(base)
+
+            # ==========================================================
+            # ✅ CLASSIFICAÇÃO LOCAL (NÃO DEPENDE DO _classificar GLOBAL)
+            # - IMPROCEDENTE contém "PROCED" -> precisa excluir
+            # - Usa _RES_ se existir; senão tenta COL_RESULTADO se existir
+            # ==========================================================
+            def _classificar_local(dfin: pd.DataFrame) -> pd.DataFrame:
+                d = dfin.copy()
+
+                # tenta achar a coluna de "resultado" real
+                if "_RES_" in d.columns:
+                    res = d["_RES_"]
+                elif "COL_RESULTADO" in globals() and _col_ok(COL_RESULTADO) and COL_RESULTADO in d.columns:
+                    res = d[COL_RESULTADO]
+                else:
+                    # fallback: cria vazio (evita crash)
+                    res = pd.Series([""] * len(d), index=d.index)
+
+                res = res.astype(str).str.upper().str.strip()
+
+                mask_improc = res.str.contains("IMPROCED", na=False)
+                mask_proc = res.str.contains("PROCED", na=False) & (~mask_improc)
+
+                d["_CLASSE_"] = "OUTROS"
+                d.loc[mask_proc, "_CLASSE_"] = "PROCEDENTE"
+                d.loc[mask_improc, "_CLASSE_"] = "IMPROCEDENTE"
+                return d
+
+            base = _classificar_local(base)
 
             modo = st.selectbox(
                 "Modo",
@@ -1521,14 +1548,14 @@ with tab_reg:
             # ============================
             # POSIÇÃO DO QUADRO (AJUSTÁVEL)
             # ============================
-            BOX_X_REG = 1.12   # (->) maior = mais DIREITA | menor = mais ESQUERDA
-            BOX_Y_REG = 0.98   # (^) maior = mais CIMA    | menor = mais BAIXO
+            BOX_X_REG = 1.12
+            BOX_Y_REG = 0.98
 
             # ============================
             # POSIÇÃO DO TÍTULO NO GRÁFICO
             # ============================
-            TITLE_X = 0.30     # esquerda → direita
-            TITLE_Y = 0.98     # baixo → cima
+            TITLE_X = 0.30
+            TITLE_Y = 0.98
 
             # ==========================================================
             # ✅ ADAPTADOR "À PROVA DE ERRO" PARA _add_summary_box
@@ -1553,35 +1580,20 @@ with tab_reg:
                 return fig
 
             # ==========================================================
-            # ✅ FUNÇÃO PARA "TABELINHA" PADRÃO (como Demanda x Demandas UF)
-            # - abaixo do gráfico: QTD
-            # - no gráfico: só % (procedente e improcedente)
+            # ✅ TABELINHA ABAIXO (QTD) — padrão pedido
             # ==========================================================
-            def _tabelinha_padrao(df_vals, col_label="REGIONAL"):
-                """
-                df_vals deve ter colunas:
-                  - col_label (REGIONAL ou _CLASSE_)
-                  - PROCEDENTE (QTD)
-                  - IMPROCEDENTE (QTD)
-                  - TOTAL (QTD)
-                """
+            def _tabelinha_qtd(df_vals: pd.DataFrame, col_label: str):
                 t = df_vals.copy()
-
-                # garante tipos
                 for c in ["PROCEDENTE", "IMPROCEDENTE", "TOTAL"]:
                     if c not in t.columns:
                         t[c] = 0
                     t[c] = t[c].fillna(0).astype(int)
 
-                # formato compacto
-                out = t.rename(columns={
-                    col_label: col_label,
-                    "PROCEDENTE": "PROCEDENTE",
-                    "IMPROCEDENTE": "IMPROCEDENTE",
-                    "TOTAL": "TOTAL"
-                })
-
-                st.dataframe(out, hide_index=True, use_container_width=True)
+                st.dataframe(
+                    t.rename(columns={col_label: "REGIONAL"}),
+                    hide_index=True,
+                    use_container_width=True
+                )
 
             # ==========================================================
             # MODO 1 — UMA REGIONAL (DETALHE)
@@ -1602,7 +1614,7 @@ with tab_reg:
                 total = int(tab["QTD"].sum()) or 1
                 tab["PCT"] = (tab["QTD"] / total * 100).round(1)
 
-                # ✅ NO GRÁFICO: só % (não mostra QTD dentro)
+                # ✅ gráfico: barras (sem QTD escrito)
                 fig = px.bar(
                     tab,
                     x="_CLASSE_",
@@ -1614,11 +1626,9 @@ with tab_reg:
                         "IMPROCEDENTE": COR_IMP,
                     }
                 )
-
-                # remove texto interno de QTD
                 fig.update_traces(text=None)
 
-                # % em cima
+                # ✅ % em cima de cada barra (correta por classe)
                 y_max = int(tab["QTD"].max()) if int(tab["QTD"].max()) > 0 else 1
                 pad = y_max * 0.10
                 fig.add_scatter(
@@ -1635,7 +1645,6 @@ with tab_reg:
                 fig = _legend_bottom(fig, y=-0.22)
                 fig.update_layout(margin=dict(l=10, r=220, t=30, b=80))
 
-                # 🔹 TÍTULO INTERNO (movível)
                 fig.add_annotation(
                     xref="paper", yref="paper",
                     x=TITLE_X, y=TITLE_Y,
@@ -1653,14 +1662,14 @@ with tab_reg:
 
                 st.plotly_chart(fig, use_container_width=True)
 
-                # ✅ TABELINHA ABAIXO (QTD) — padrão Demanda x Demandas UF
+                # ✅ tabelinha abaixo (QTD)
                 t = pd.DataFrame([{
-                    "RESULTADO": "TOTAL",
+                    COL_REGIONAL: reg_sel,
                     "PROCEDENTE": proc_total,
                     "IMPROCEDENTE": improc_total,
                     "TOTAL": total_geral
                 }])
-                _tabelinha_padrao(t, col_label="RESULTADO")
+                _tabelinha_qtd(t, col_label=COL_REGIONAL)
 
             # ==========================================================
             # MODO 2 — TODAS (TOP N POR REGIONAL)
@@ -1702,11 +1711,9 @@ with tab_reg:
                         "IMPROCEDENTE": COR_IMP,
                     }
                 )
-
-                # ✅ NO GRÁFICO: remove QTD dentro (só % em cima)
                 fig.update_traces(text=None)
 
-                # % em cima do TOTAL de cada regional
+                # ✅ % em cima do total por regional (correta)
                 y_max = int(tab["TOTAL"].max()) if int(tab["TOTAL"].max()) > 0 else 1
                 pad = y_max * 0.06
                 fig.add_scatter(
@@ -1723,7 +1730,6 @@ with tab_reg:
                 fig = _legend_bottom(fig, y=-0.22)
                 fig.update_layout(margin=dict(l=10, r=220, t=30, b=80))
 
-                # 🔹 TÍTULO INTERNO (movível)
                 fig.add_annotation(
                     xref="paper", yref="paper",
                     x=TITLE_X, y=TITLE_Y,
@@ -1741,10 +1747,9 @@ with tab_reg:
 
                 st.plotly_chart(fig, use_container_width=True)
 
-                # ✅ TABELINHA ABAIXO (QTD) — padrão Demanda x Demandas UF
-                # (mostra por regional + totais, bem claro)
-                t = tab[[COL_REGIONAL, "PROCEDENTE", "IMPROCEDENTE", "TOTAL"]].copy()
-                _tabelinha_padrao(t, col_label=COL_REGIONAL)
+                # ✅ tabelinha abaixo (QTD) por regional
+                _tabelinha_qtd(tab[[COL_REGIONAL, "PROCEDENTE", "IMPROCEDENTE", "TOTAL"]], col_label=COL_REGIONAL)
+
 
 
     # ==================================================
