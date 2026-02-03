@@ -1493,6 +1493,7 @@ with tab_reg:
 
     if not _col_ok(COL_REGIONAL):
         st.warning("Coluna REGIONAL não encontrada.")
+
     else:
         base = df_periodo.dropna(subset=[COL_REGIONAL]).copy()
 
@@ -1551,6 +1552,40 @@ with tab_reg:
                     pass
                 return fig
 
+            # ==========================================================
+            # ✅ FUNÇÃO PARA "TABELINHA" PADRÃO (como Demanda x Demandas UF)
+            # - abaixo do gráfico: QTD
+            # - no gráfico: só % (procedente e improcedente)
+            # ==========================================================
+            def _tabelinha_padrao(df_vals, col_label="REGIONAL"):
+                """
+                df_vals deve ter colunas:
+                  - col_label (REGIONAL ou _CLASSE_)
+                  - PROCEDENTE (QTD)
+                  - IMPROCEDENTE (QTD)
+                  - TOTAL (QTD)
+                """
+                t = df_vals.copy()
+
+                # garante tipos
+                for c in ["PROCEDENTE", "IMPROCEDENTE", "TOTAL"]:
+                    if c not in t.columns:
+                        t[c] = 0
+                    t[c] = t[c].fillna(0).astype(int)
+
+                # formato compacto
+                out = t.rename(columns={
+                    col_label: col_label,
+                    "PROCEDENTE": "PROCEDENTE",
+                    "IMPROCEDENTE": "IMPROCEDENTE",
+                    "TOTAL": "TOTAL"
+                })
+
+                st.dataframe(out, hide_index=True, use_container_width=True)
+
+            # ==========================================================
+            # MODO 1 — UMA REGIONAL (DETALHE)
+            # ==========================================================
             if modo == "Uma regional (detalhe)":
                 regs = sorted(base[COL_REGIONAL].dropna().unique().tolist())
                 reg_sel = st.selectbox("Regional", regs, index=0, key="rg_reg_sel")
@@ -1567,8 +1602,7 @@ with tab_reg:
                 total = int(tab["QTD"].sum()) or 1
                 tab["PCT"] = (tab["QTD"] / total * 100).round(1)
 
-                tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
-
+                # ✅ NO GRÁFICO: só % (não mostra QTD dentro)
                 fig = px.bar(
                     tab,
                     x="_CLASSE_",
@@ -1578,19 +1612,15 @@ with tab_reg:
                     color_discrete_map={
                         "PROCEDENTE": COR_PROC,
                         "IMPROCEDENTE": COR_IMP,
-                    },
-                    text="TXT_QTD"  # ✅ CORREÇÃO: texto por trace (não duplica)
+                    }
                 )
 
-                fig.update_traces(
-                    textposition="inside",
-                    insidetextanchor="middle",
-                    cliponaxis=False
-                )
+                # remove texto interno de QTD
+                fig.update_traces(text=None)
 
                 # % em cima
                 y_max = int(tab["QTD"].max()) if int(tab["QTD"].max()) > 0 else 1
-                pad = y_max * 0.08
+                pad = y_max * 0.10
                 fig.add_scatter(
                     x=tab["_CLASSE_"],
                     y=tab["QTD"].astype(float) + pad,
@@ -1623,12 +1653,18 @@ with tab_reg:
 
                 st.plotly_chart(fig, use_container_width=True)
 
-                st.dataframe(
-                    tab.rename(columns={"_CLASSE_": "RESULTADO", "QTD": "QTD", "PCT": "%"}),
-                    hide_index=True,
-                    use_container_width=True
-                )
+                # ✅ TABELINHA ABAIXO (QTD) — padrão Demanda x Demandas UF
+                t = pd.DataFrame([{
+                    "RESULTADO": "TOTAL",
+                    "PROCEDENTE": proc_total,
+                    "IMPROCEDENTE": improc_total,
+                    "TOTAL": total_geral
+                }])
+                _tabelinha_padrao(t, col_label="RESULTADO")
 
+            # ==========================================================
+            # MODO 2 — TODAS (TOP N POR REGIONAL)
+            # ==========================================================
             else:
                 tab = (
                     base.groupby([COL_REGIONAL, "_CLASSE_"])
@@ -1654,8 +1690,6 @@ with tab_reg:
                     value_name="QTD"
                 )
 
-                melt["TXT_QTD"] = melt["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
-
                 fig = px.bar(
                     melt,
                     x=COL_REGIONAL,
@@ -1666,19 +1700,15 @@ with tab_reg:
                     color_discrete_map={
                         "PROCEDENTE": COR_PROC,
                         "IMPROCEDENTE": COR_IMP,
-                    },
-                    text="TXT_QTD"  # ✅ CORREÇÃO: texto por trace (não duplica)
+                    }
                 )
 
-                fig.update_traces(
-                    textposition="inside",
-                    insidetextanchor="middle",
-                    cliponaxis=False
-                )
+                # ✅ NO GRÁFICO: remove QTD dentro (só % em cima)
+                fig.update_traces(text=None)
 
                 # % em cima do TOTAL de cada regional
                 y_max = int(tab["TOTAL"].max()) if int(tab["TOTAL"].max()) > 0 else 1
-                pad = y_max * 0.04
+                pad = y_max * 0.06
                 fig.add_scatter(
                     x=tab[COL_REGIONAL],
                     y=tab["TOTAL"].astype(float) + pad,
@@ -1710,7 +1740,12 @@ with tab_reg:
                 fig = _add_box_safe(fig, proc_total, improc_total, total_geral2, BOX_X_REG, BOX_Y_REG)
 
                 st.plotly_chart(fig, use_container_width=True)
-                st.dataframe(tab, hide_index=True, use_container_width=True)
+
+                # ✅ TABELINHA ABAIXO (QTD) — padrão Demanda x Demandas UF
+                # (mostra por regional + totais, bem claro)
+                t = tab[[COL_REGIONAL, "PROCEDENTE", "IMPROCEDENTE", "TOTAL"]].copy()
+                _tabelinha_padrao(t, col_label=COL_REGIONAL)
+
 
     # ==================================================
     # TAB 2 — UF
