@@ -1486,73 +1486,231 @@ if st.session_state.show_relatorios:
     )
 
 # ==================================================
-# 📍 REGIONAL — TOP N (gráfico só % + tabelinha valores)
+# 📍 REGIONAL — TOP N
 # ==================================================
-tab = (
-    base.groupby([COL_REGIONAL, "_CLASSE_"])
-    .size()
-    .unstack(fill_value=0)
-    .reset_index()
-)
+with tab_reg:
+    st.subheader("Relatório por Regional")
 
-# remove OUTROS definitivamente
-for c in ["PROCEDENTE", "IMPROCEDENTE"]:
-    if c not in tab.columns:
-        tab[c] = 0
+    if not _col_ok(COL_REGIONAL):
+        st.warning("Coluna REGIONAL não encontrada.")
+    else:
+        base = df_periodo.dropna(subset=[COL_REGIONAL]).copy()
 
-tab["TOTAL"] = tab["PROCEDENTE"] + tab["IMPROCEDENTE"]
-tab = tab.sort_values("TOTAL", ascending=False).head(top_n).copy()
+        if base.empty:
+            st.info("Sem dados no período.")
+        else:
+            base[COL_REGIONAL] = _norm(base[COL_REGIONAL])
+            base = _classificar(base)
 
-# % por regional (cada classe sobre o TOTAL daquela regional)
-den = tab["TOTAL"].replace(0, 1)
-tab["PCT_PROC"] = (tab["PROCEDENTE"] / den * 100).round(1)
-tab["PCT_IMP"]  = (tab["IMPROCEDENTE"] / den * 100).round(1)
+            modo = st.selectbox(
+                "Modo",
+                ["Todas (Top N por regional)", "Uma regional (detalhe)"],
+                index=0,
+                key="rg_modo_reg"
+            )
 
-# ---------------------------
-# FIGURA (stack) — SEM TEXTO
-# ---------------------------
-melt = tab.melt(
-    id_vars=[COL_REGIONAL, "TOTAL", "PCT_PROC", "PCT_IMP"],
-    value_vars=["PROCEDENTE", "IMPROCEDENTE"],
-    var_name="RESULTADO",
-    value_name="QTD"
-)
+            top_n = st.slider(
+                "Top N regionais",
+                min_value=5,
+                max_value=40,
+                value=15,
+                key="rg_reg_topn"
+            )
 
-fig = px.bar(
-    melt,
-    x=COL_REGIONAL,
-    y="QTD",
-    color="RESULTADO",
-    barmode="stack",
-    template="plotly_dark",
-    color_discrete_map={
-        "PROCEDENTE": COR_PROC,
-        "IMPROCEDENTE": COR_IMP
-    }
-)
+            # ============================
+            # POSIÇÃO DO QUADRO (AJUSTÁVEL)
+            # ============================
+            BOX_X_REG = 1.12   # (->) maior = mais DIREITA | menor = mais ESQUERDA
+            BOX_Y_REG = 0.98   # (^) maior = mais CIMA    | menor = mais BAIXO
 
-fig = _style_clean(fig)
-fig = _legend_bottom(fig, y=-0.22)
+            # ============================
+            # POSIÇÃO DO TÍTULO NO GRÁFICO
+            # ============================
+            TITLE_X = 0.30     # esquerda → direita
+            TITLE_Y = 0.98     # baixo → cima
 
-# ---------------------------
-# TABELINHA (valores) embaixo
-# ---------------------------
-df_table = tab[[COL_REGIONAL, "PROCEDENTE", "IMPROCEDENTE", "TOTAL"]].copy()
+            # ==========================================================
+            # ✅ ADAPTADOR "À PROVA DE ERRO" PARA _add_summary_box
+            # ==========================================================
+            def _add_box_safe(fig, proc, improc, total, box_x, box_y):
+                try:
+                    return _add_summary_box(fig, proc, improc, 0, total, box_x=box_x, box_y=box_y)
+                except TypeError:
+                    pass
+                try:
+                    return _add_summary_box(fig, proc, improc, 0, total, box_x, box_y)
+                except TypeError:
+                    pass
+                try:
+                    return _add_summary_box(fig, proc, improc, total, box_x=box_x, box_y=box_y)
+                except TypeError:
+                    pass
+                try:
+                    return _add_summary_box(fig, proc, improc, total, box_x, box_y)
+                except TypeError:
+                    pass
+                return fig
 
-# aqui a função coloca SOMENTE % no gráfico
-_render_pct_only_and_table(
-    fig,
-    tab_pct=tab[[COL_REGIONAL, "PROCEDENTE", "IMPROCEDENTE", "TOTAL", "PCT_PROC", "PCT_IMP"]].copy(),
-    df_table=df_table,
-    x_col=COL_REGIONAL,
-    title_in_fig=f"📍 REGIONAL — TOP {len(tab)}",
-    pct_y_pad_ratio=0.08,     # ajuste se a % ficar muito alta/baixa
-    table_margin_top=8        # ajuste o espaçamento da tabela
-)
+            if modo == "Uma regional (detalhe)":
+                regs = sorted(base[COL_REGIONAL].dropna().unique().tolist())
+                reg_sel = st.selectbox("Regional", regs, index=0, key="rg_reg_sel")
 
+                rec = base[base[COL_REGIONAL] == reg_sel].copy()
 
+                tab = (
+                    rec.groupby("_CLASSE_")
+                    .size()
+                    .reindex(["PROCEDENTE", "IMPROCEDENTE"], fill_value=0)
+                    .reset_index(name="QTD")
+                )
 
+                total = int(tab["QTD"].sum()) or 1
+                tab["PCT"] = (tab["QTD"] / total * 100).round(1)
 
+                tab["TXT_QTD"] = tab["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+
+                fig = px.bar(
+                    tab,
+                    x="_CLASSE_",
+                    y="QTD",
+                    color="_CLASSE_",
+                    template="plotly_dark",
+                    color_discrete_map={
+                        "PROCEDENTE": COR_PROC,
+                        "IMPROCEDENTE": COR_IMP,
+                    },
+                    text="TXT_QTD"  # ✅ CORREÇÃO: texto por trace (não duplica)
+                )
+
+                fig.update_traces(
+                    textposition="inside",
+                    insidetextanchor="middle",
+                    cliponaxis=False
+                )
+
+                # % em cima
+                y_max = int(tab["QTD"].max()) if int(tab["QTD"].max()) > 0 else 1
+                pad = y_max * 0.08
+                fig.add_scatter(
+                    x=tab["_CLASSE_"],
+                    y=tab["QTD"].astype(float) + pad,
+                    text=[("" if q == 0 else f"{p:.1f}%") for q, p in zip(tab["QTD"], tab["PCT"])],
+                    mode="text",
+                    showlegend=False,
+                    textfont=dict(size=11, family="Arial Black", color="white"),
+                    hoverinfo="skip",
+                )
+
+                fig = _style_clean(fig)
+                fig = _legend_bottom(fig, y=-0.22)
+                fig.update_layout(margin=dict(l=10, r=220, t=30, b=80))
+
+                # 🔹 TÍTULO INTERNO (movível)
+                fig.add_annotation(
+                    xref="paper", yref="paper",
+                    x=TITLE_X, y=TITLE_Y,
+                    text=f"📍 REGIONAL — {reg_sel}",
+                    showarrow=False,
+                    font=dict(size=14, family="Arial Black", color="white"),
+                    align="left"
+                )
+
+                proc_total = int(tab.loc[tab["_CLASSE_"] == "PROCEDENTE", "QTD"].sum())
+                improc_total = int(tab.loc[tab["_CLASSE_"] == "IMPROCEDENTE", "QTD"].sum())
+                total_geral = proc_total + improc_total
+
+                fig = _add_box_safe(fig, proc_total, improc_total, total_geral, BOX_X_REG, BOX_Y_REG)
+
+                st.plotly_chart(fig, use_container_width=True)
+
+                st.dataframe(
+                    tab.rename(columns={"_CLASSE_": "RESULTADO", "QTD": "QTD", "PCT": "%"}),
+                    hide_index=True,
+                    use_container_width=True
+                )
+
+            else:
+                tab = (
+                    base.groupby([COL_REGIONAL, "_CLASSE_"])
+                    .size()
+                    .unstack(fill_value=0)
+                    .reset_index()
+                )
+
+                for c in ["PROCEDENTE", "IMPROCEDENTE"]:
+                    if c not in tab.columns:
+                        tab[c] = 0
+
+                tab["TOTAL"] = tab["PROCEDENTE"] + tab["IMPROCEDENTE"]
+                tab = tab.sort_values("TOTAL", ascending=False).head(top_n).copy()
+
+                total_geral = int(tab["TOTAL"].sum()) or 1
+                tab["PCT_TOTAL"] = (tab["TOTAL"] / total_geral * 100).round(1)
+
+                melt = tab.melt(
+                    id_vars=[COL_REGIONAL, "TOTAL", "PCT_TOTAL"],
+                    value_vars=["PROCEDENTE", "IMPROCEDENTE"],
+                    var_name="RESULTADO",
+                    value_name="QTD"
+                )
+
+                melt["TXT_QTD"] = melt["QTD"].apply(lambda v: "" if int(v) == 0 else str(int(v)))
+
+                fig = px.bar(
+                    melt,
+                    x=COL_REGIONAL,
+                    y="QTD",
+                    color="RESULTADO",
+                    barmode="stack",
+                    template="plotly_dark",
+                    color_discrete_map={
+                        "PROCEDENTE": COR_PROC,
+                        "IMPROCEDENTE": COR_IMP,
+                    },
+                    text="TXT_QTD"  # ✅ CORREÇÃO: texto por trace (não duplica)
+                )
+
+                fig.update_traces(
+                    textposition="inside",
+                    insidetextanchor="middle",
+                    cliponaxis=False
+                )
+
+                # % em cima do TOTAL de cada regional
+                y_max = int(tab["TOTAL"].max()) if int(tab["TOTAL"].max()) > 0 else 1
+                pad = y_max * 0.04
+                fig.add_scatter(
+                    x=tab[COL_REGIONAL],
+                    y=tab["TOTAL"].astype(float) + pad,
+                    text=[f"{p:.1f}%" for p in tab["PCT_TOTAL"]],
+                    mode="text",
+                    showlegend=False,
+                    textfont=dict(size=11, family="Arial Black", color="white"),
+                    hoverinfo="skip",
+                )
+
+                fig = _style_clean(fig)
+                fig = _legend_bottom(fig, y=-0.22)
+                fig.update_layout(margin=dict(l=10, r=220, t=30, b=80))
+
+                # 🔹 TÍTULO INTERNO (movível)
+                fig.add_annotation(
+                    xref="paper", yref="paper",
+                    x=TITLE_X, y=TITLE_Y,
+                    text=f"📍 REGIONAL — TOP {len(tab)}",
+                    showarrow=False,
+                    font=dict(size=14, family="Arial Black", color="white"),
+                    align="left"
+                )
+
+                proc_total = int(tab["PROCEDENTE"].sum())
+                improc_total = int(tab["IMPROCEDENTE"].sum())
+                total_geral2 = proc_total + improc_total
+
+                fig = _add_box_safe(fig, proc_total, improc_total, total_geral2, BOX_X_REG, BOX_Y_REG)
+
+                st.plotly_chart(fig, use_container_width=True)
+                st.dataframe(tab, hide_index=True, use_container_width=True)
 
     # ==================================================
     # TAB 2 — UF
