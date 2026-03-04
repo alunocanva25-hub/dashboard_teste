@@ -2016,7 +2016,7 @@ if st.session_state.show_relatorios:
     with tab_top5_dist:
         st.subheader("🏆 Top 5 usuários com notas IMPROCEDENTES por Distribuidora")
 
-        COL_LOCAL = achar_coluna(df_periodo, ["DISTRIBUIDORA", "DISTRIBUIDOR", "FORNECEDOR", "CD", "DISTRIB"])
+        COL_LOCAL = achar_coluna(df_periodo, ["DISTRIBUIDORA", "LOCALIDADE", "FORNECEDOR", "CD", "DISTRIB"])
         COL_USER    = achar_coluna(df_periodo, ["USUARIO", "USUÁRIO", "LOGIN", "OPERADOR", "RESPONSAVEL", "RESPONSÁVEL", "COLABORADOR"])
 
         if COL_LOCAL is None:
