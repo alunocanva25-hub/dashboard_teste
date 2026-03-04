@@ -2016,11 +2016,11 @@ if st.session_state.show_relatorios:
     with tab_top5_dist:
         st.subheader("🏆 Top 5 usuários com notas IMPROCEDENTES por Distribuidora")
 
-        COL_LOCAL = achar_coluna(df_periodo, ["DISTRIBUIDORA", "LOCALIDADE", "FORNECEDOR", "CD", "LOCAL"])
+        COL_LOCAL = achar_coluna(df_periodo, ["DISTRIBUIDORA", "DISTRIBUIDOR", "FORNECEDOR", "CD", "DISTRIB"])
         COL_USER    = achar_coluna(df_periodo, ["USUARIO", "USUÁRIO", "LOGIN", "OPERADOR", "RESPONSAVEL", "RESPONSÁVEL", "COLABORADOR"])
 
         if COL_LOCAL is None:
-            st.warning("Não encontrei a coluna de LOCALUIDORA (ex.: LOCALUIDORA/FORNECEDOR/CD).")
+            st.warning("Não encontrei a coluna de DISTRIBUIDORA (ex.: DISTRIBUIDORA/FORNECEDOR/CD).")
         elif COL_USER is None:
             st.warning("Não encontrei a coluna de USUÁRIO (ex.: USUARIO/LOGIN/OPERADOR).")
         else:
@@ -2043,16 +2043,16 @@ if st.session_state.show_relatorios:
                 tot_dist = (
                     tab.groupby(COL_LOCAL)["QTD_IMPROCEDENTE"]
                     .sum()
-                    .reset_index(name="TOTAL_IMPROCEDENTE_LOCAL")
+                    .reset_index(name="TOTAL_IMPROCEDENTE_DISTRIB")
                 )
 
                 tab = tab.merge(tot_dist, on=COL_LOCAL, how="left")
-                tab["%_NA_LOCAL"] = (
-                    (tab["QTD_IMPROCEDENTE"] / tab["TOTAL_IMPROCEDENTE_LOCAL"].replace(0, 1)) * 100
+                tab["%_NA_DISTRIB"] = (
+                    (tab["QTD_IMPROCEDENTE"] / tab["TOTAL_IMPROCEDENTE_DISTRIB"].replace(0, 1)) * 100
                 ).round(1)
 
                 tab_top5 = (
-                    tab.sort_values(["TOTAL_IMPROCEDENTE_LOCAL", "QTD_IMPROCEDENTE"], ascending=[False, False])
+                    tab.sort_values(["TOTAL_IMPROCEDENTE_DISTRIB", "QTD_IMPROCEDENTE"], ascending=[False, False])
                     .groupby(COL_LOCAL, as_index=False, group_keys=False)
                     .apply(lambda g: g.sort_values("QTD_IMPROCEDENTE", ascending=False).head(5))
                     .reset_index(drop=True)
@@ -2060,14 +2060,14 @@ if st.session_state.show_relatorios:
 
                 modo = st.radio(
                     "Modo de visualização",
-                    options=["Geral (todas LOCALuidoras)", "Detalhe (uma LOCALuidora)"],
+                    options=["Geral (todas distribuidoras)", "Detalhe (uma distribuidora)"],
                     index=0,
                     horizontal=True,
                     key="top5_dist_modo"
                 )
 
-                if modo == "Geral (todas LOCALuidoras)":
-                    out = tab_top5[[COL_LOCAL, COL_USER, "QTD_IMPROCEDENTE", "%_NA_LOCAL", "TOTAL_IMPROCEDENTE_LOCAL"]].copy()
+                if modo == "Geral (todas distribuidoras)":
+                    out = tab_top5[[COL_LOCAL, COL_USER, "QTD_IMPROCEDENTE", "%_NA_DISTRIB", "TOTAL_IMPROCEDENTE_DISTRIB"]].copy()
                     out = out.rename(columns={
                         COL_LOCAL: "DISTRIBUIDORA",
                         COL_USER: "USUÁRIO",
