@@ -2016,16 +2016,16 @@ if st.session_state.show_relatorios:
     with tab_top5_dist:
         st.subheader("🏆 Top 5 usuários com notas IMPROCEDENTES por Distribuidora")
 
-        COL_DISTRIB = achar_coluna(df_periodo, ["DISTRIBUIDORA", "DISTRIBUIDOR", "FORNECEDOR", "CD", "DISTRIB"])
+        COL_LOCAL = achar_coluna(df_periodo, ["DISTRIBUIDORA", "LOCALIDADE", "FORNECEDOR", "CD", "LOCAL"])
         COL_USER    = achar_coluna(df_periodo, ["USUARIO", "USUÁRIO", "LOGIN", "OPERADOR", "RESPONSAVEL", "RESPONSÁVEL", "COLABORADOR"])
 
-        if COL_DISTRIB is None:
-            st.warning("Não encontrei a coluna de DISTRIBUIDORA (ex.: DISTRIBUIDORA/FORNECEDOR/CD).")
+        if COL_LOCAL is None:
+            st.warning("Não encontrei a coluna de LOCALUIDORA (ex.: LOCALUIDORA/FORNECEDOR/CD).")
         elif COL_USER is None:
             st.warning("Não encontrei a coluna de USUÁRIO (ex.: USUARIO/LOGIN/OPERADOR).")
         else:
             base = df_periodo.copy()
-            base[COL_DISTRIB] = base[COL_DISTRIB].astype(str).str.upper().str.strip()
+            base[COL_LOCAL] = base[COL_LOCAL].astype(str).str.upper().str.strip()
             base[COL_USER]    = base[COL_USER].astype(str).str.upper().str.strip()
 
             base = _classificar(base)
@@ -2035,41 +2035,41 @@ if st.session_state.show_relatorios:
                 st.info("Sem improcedências no período/filtro atual.")
             else:
                 tab = (
-                    base_imp.groupby([COL_DISTRIB, COL_USER])
+                    base_imp.groupby([COL_LOCAL, COL_USER])
                     .size()
                     .reset_index(name="QTD_IMPROCEDENTE")
                 )
 
                 tot_dist = (
-                    tab.groupby(COL_DISTRIB)["QTD_IMPROCEDENTE"]
+                    tab.groupby(COL_LOCAL)["QTD_IMPROCEDENTE"]
                     .sum()
-                    .reset_index(name="TOTAL_IMPROCEDENTE_DISTRIB")
+                    .reset_index(name="TOTAL_IMPROCEDENTE_LOCAL")
                 )
 
-                tab = tab.merge(tot_dist, on=COL_DISTRIB, how="left")
-                tab["%_NA_DISTRIB"] = (
-                    (tab["QTD_IMPROCEDENTE"] / tab["TOTAL_IMPROCEDENTE_DISTRIB"].replace(0, 1)) * 100
+                tab = tab.merge(tot_dist, on=COL_LOCAL, how="left")
+                tab["%_NA_LOCAL"] = (
+                    (tab["QTD_IMPROCEDENTE"] / tab["TOTAL_IMPROCEDENTE_LOCAL"].replace(0, 1)) * 100
                 ).round(1)
 
                 tab_top5 = (
-                    tab.sort_values(["TOTAL_IMPROCEDENTE_DISTRIB", "QTD_IMPROCEDENTE"], ascending=[False, False])
-                    .groupby(COL_DISTRIB, as_index=False, group_keys=False)
+                    tab.sort_values(["TOTAL_IMPROCEDENTE_LOCAL", "QTD_IMPROCEDENTE"], ascending=[False, False])
+                    .groupby(COL_LOCAL, as_index=False, group_keys=False)
                     .apply(lambda g: g.sort_values("QTD_IMPROCEDENTE", ascending=False).head(5))
                     .reset_index(drop=True)
                 )
 
                 modo = st.radio(
                     "Modo de visualização",
-                    options=["Geral (todas distribuidoras)", "Detalhe (uma distribuidora)"],
+                    options=["Geral (todas LOCALuidoras)", "Detalhe (uma LOCALuidora)"],
                     index=0,
                     horizontal=True,
                     key="top5_dist_modo"
                 )
 
-                if modo == "Geral (todas distribuidoras)":
-                    out = tab_top5[[COL_DISTRIB, COL_USER, "QTD_IMPROCEDENTE", "%_NA_DISTRIB", "TOTAL_IMPROCEDENTE_DISTRIB"]].copy()
+                if modo == "Geral (todas LOCALuidoras)":
+                    out = tab_top5[[COL_LOCAL, COL_USER, "QTD_IMPROCEDENTE", "%_NA_LOCAL", "TOTAL_IMPROCEDENTE_LOCAL"]].copy()
                     out = out.rename(columns={
-                        COL_DISTRIB: "DISTRIBUIDORA",
+                        COL_LOCAL: "DISTRIBUIDORA",
                         COL_USER: "USUÁRIO",
                         "QTD_IMPROCEDENTE": "IMPROCEDENTE (QTD)",
                         "%_NA_DISTRIB": "% NA DISTRIB",
@@ -2079,14 +2079,14 @@ if st.session_state.show_relatorios:
 
                 else:
                     dists = (
-                        tot_dist.sort_values("TOTAL_IMPROCEDENTE_DISTRIB", ascending=False)[COL_DISTRIB]
+                        tot_dist.sort_values("TOTAL_IMPROCEDENTE_DISTRIB", ascending=False)[COL_LOCAL]
                         .dropna()
                         .unique()
                         .tolist()
                     )
                     dist_sel = st.selectbox("Distribuidora", dists, index=0, key="top5_dist_sel")
 
-                    det = tab_top5[tab_top5[COL_DISTRIB] == dist_sel].copy()
+                    det = tab_top5[tab_top5[COL_LOCAL] == dist_sel].copy()
                     if det.empty:
                         st.info("Sem dados para essa distribuidora no período.")
                     else:
